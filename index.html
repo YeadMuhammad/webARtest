@@ -1,53 +1,75 @@
-<script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1c2407b26c61958baa93967b5412487cd94b290b/dist/aframe-master.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR.js NFT Poster Replacement</title>
 
-<style>
-  .arjs-loader {
-    height: 100%;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    background-color: rgba(0, 0, 0, 0.8);
-    z-index: 9999;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
+  <!-- A-Frame library -->
+  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1c2407b26c61958baa93967b5412487cd94b290b/dist/aframe-master.min.js"></script>
 
-  .arjs-loader div {
-    text-align: center;
-    font-size: 1.25em;
-    color: white;
-  }
-</style>
+  <!-- AR.js NFT for A-Frame -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
-<body style="margin : 0px; overflow: hidden;">
-  <!-- minimal loader shown until image descriptors are loaded -->
-  <div class="arjs-loader">
-    <div>Loading, please wait...</div>
-  </div>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+    .arjs-loader {
+      height: 100%; width: 100%; position: absolute; top: 0; left: 0;
+      background-color: rgba(0, 0, 0, 0.8); z-index: 9999;
+      display: flex; justify-content: center; align-items: center;
+      color: white; font-size: 1.2em; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loader shown while AR initializes -->
+  <div class="arjs-loader" id="loader">Loading AR — Allow camera access...</div>
+
   <a-scene
+    embedded
     vr-mode-ui="enabled: false;"
     renderer="logarithmicDepthBuffer: true;"
-    embedded
-    arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+    id="scene"
   >
+    <!-- NFT marker -->
     <a-nft
       type="nft"
-      url="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/trex-image/trex"
+      url="old" <!-- your NFT marker base name -->
       smooth="true"
       smoothCount="10"
       smoothTolerance=".01"
       smoothThreshold="5"
+      id="marker"
     >
-      <a-entity
-        gltf-model="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/scene.gltf"
-        scale="5 5 5"
-        position="50 150 0"
-      >
-      </a-entity>
+      <!-- Replacement content: a plane with your image -->
+      <a-plane src="new.jpg" width="1" height="1" position="0 0 0" rotation="0 0 0"></a-plane>
     </a-nft>
+
+    <!-- Camera -->
     <a-entity camera></a-entity>
   </a-scene>
+
+  <script>
+    const loader = document.getElementById('loader');
+    const scene = document.getElementById('scene');
+
+    // Wait for AR.js to initialize
+    scene.addEventListener('loaded', () => {
+      // NFT descriptor files might take a moment to load
+      const marker = document.getElementById('marker');
+
+      marker.addEventListener('markerFound', () => {
+        loader.style.display = 'none';
+        console.log('Marker found — AR active');
+      });
+
+      marker.addEventListener('markerLost', () => {
+        loader.style.display = 'flex';
+        loader.innerText = 'Point the camera at the poster to activate AR';
+        console.log('Marker lost');
+      });
+    });
+  </script>
 </body>
+</html>
