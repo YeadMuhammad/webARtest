@@ -2,22 +2,19 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NFT AR Mobile Friendly</title>
+  <title>NFT Poster Replacement AR</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-nft.js"></script>
+
   <style>
     body { margin:0; overflow:hidden; background:#000; font-family:Arial,sans-serif; }
     #status {
       position:absolute; top:10px; left:50%; transform:translateX(-50%);
-      background:rgba(0,0,0,0.6); color:#fff; padding:8px 12px; border-radius:6px; z-index:20;
-      text-align:center;
+      background:rgba(0,0,0,0.6); color:#fff; padding:8px 12px; border-radius:6px; z-index:10;
     }
     #startButton {
-      position:fixed;
-      top:50%; left:50%; transform:translate(-50%,-50%);
-      padding:18px 24px; font-size:18px; border:none; border-radius:10px;
-      background:#0a84ff; color:white; cursor:pointer; z-index:30;
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      padding:12px 20px; font-size:16px; border:none; border-radius:8px; cursor:pointer; z-index:20;
     }
   </style>
 </head>
@@ -26,22 +23,30 @@
   <button id="startButton">Start Camera</button>
 
   <script>
-    const NFT_BASE = 'old';       // your NFT marker base filename
+    const NFT_BASE = 'old';       // NFT marker base filename
     const REPLACEMENT_IMAGE = 'new.jpg';
 
-    let scene, camera, renderer, arSource, arContext, markerRoot, posterMesh;
+    let scene, camera, renderer;
+    let arSource, arContext;
+    let markerRoot, posterMesh;
 
     const status = document.getElementById('status');
     const startBtn = document.getElementById('startButton');
 
     startBtn.addEventListener('click', async () => {
       startBtn.style.display = 'none';
-      status.innerText = 'Starting camera...';
-      await initAR();
+      status.innerText = 'Requesting camera access...';
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        initAR();
+      } catch(err) {
+        console.error('Camera permission denied', err);
+        status.innerText = 'Camera access denied';
+      }
     });
 
-    async function initAR() {
-      // Three.js
+    function initAR() {
+      // Scene & camera
       scene = new THREE.Scene();
       camera = new THREE.Camera();
       scene.add(camera);
@@ -53,40 +58,59 @@
       renderer.domElement.style.left = '0px';
       document.body.appendChild(renderer.domElement);
 
-      // AR.js Source
+      // AR.js source
       arSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
-      await new Promise(resolve => arSource.init(resolve));
-      window.addEventListener('resize', () => onResize());
+      arSource.init(() => onResize());
+      window.addEventListener('resize', onResize);
 
-      // AR.js Context
+      // AR.js NFT context
       arContext = new THREEx.ArToolkitContext({
         cameraParametersUrl: 'camera_para.dat',
         detectionMode: 'mono'
       });
-      await new Promise(resolve => arContext.init(resolve));
-      camera.projectionMatrix.copy(arContext.getProjectionMatrix());
 
-      // Marker
+      arContext.init(() => camera.projectionMatrix.copy(arContext.getProjectionMatrix()));
+
+      // Marker root
       markerRoot = new THREE.Group();
       scene.add(markerRoot);
+
       new THREEx.ArNftControls(arContext, markerRoot, NFT_BASE, { changeMatrixMode: 'modelViewMatrix' });
 
-      // Poster
+      // Replacement poster
       const loader = new THREE.TextureLoader();
       loader.load(REPLACEMENT_IMAGE, texture => {
         const geometry = new THREE.PlaneGeometry(1,1);
         const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
         posterMesh = new THREE.Mesh(geometry, material);
+        posterMesh.position.set(0,0,0);
+        posterMesh.rotation.x = 0;
+        posterMesh.rotation.y = 0;
+        posterMesh.scale.set(1,1,1);
         markerRoot.add(posterMesh);
-        status.innerText = 'Marker detected — replacement ready';
+        status.innerText = 'Point camera at marker — replacement ready';
       }, undefined, err => {
-        console.error(err);
+        console.error('Failed to load replacement image', err);
         status.innerText = 'Failed to load replacement image';
       });
 
-      // Start render
       animate();
     }
 
-    function onResize(){
-      if(!arSource) return;
+    function onResize() {
+      if (!arSource) return;
+      arSource.onResizeElement();
+      arSource.copyElementSizeTo(renderer.domElement);
+      if (arContext && arContext.arController) {
+        arSource.copyElementSizeTo(arContext.arController.canvas);
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (arSource && arSource.ready) arContext.update(arSource.domElement);
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
