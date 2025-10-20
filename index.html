@@ -20,45 +20,30 @@
 </style>
 </head>
 <body>
-<button id="startBtn">Start Camera</button>
+<button id="startBtn">Start AR</button>
+
+<a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true;"
+         arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" id="scene">
+  
+  <a-nft type="nft" url="old" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5" id="nftMarker">
+    <a-plane id="replacementPlane" src="new.jpg" rotation="-90 0 0" width="2" height="2" visible="false"></a-plane>
+  </a-nft>
+
+  <a-entity camera></a-entity>
+</a-scene>
 
 <script>
-document.getElementById('startBtn').addEventListener('click', () => {
-  document.getElementById('startBtn').style.display = 'none';
+const startBtn = document.getElementById('startBtn');
+const plane = document.getElementById('replacementPlane');
+const marker = document.getElementById('nftMarker');
 
-  const scene = document.createElement('a-scene');
-  scene.setAttribute('embedded', '');
-  scene.setAttribute('vr-mode-ui', 'enabled:false');
-  scene.setAttribute('renderer', 'logarithmicDepthBuffer:true');
-  scene.setAttribute('arjs', 'trackingMethod:best;sourceType:webcam;debugUIEnabled:false;');
+startBtn.addEventListener('click', () => {
+  startBtn.style.display = 'none';
+  // AR.js automatically requests camera when the scene is already in the DOM
+  plane.setAttribute('visible', false);
 
-  const nft = document.createElement('a-nft');
-  nft.setAttribute('type', 'nft');
-  nft.setAttribute('url', 'old'); // Your NFT base name (old.fset etc.)
-  nft.setAttribute('smooth', 'true');
-  nft.setAttribute('smoothCount', '10');
-  nft.setAttribute('smoothTolerance', '0.01');
-  nft.setAttribute('smoothThreshold', '5');
-
-  // 3D replacement example (plane)
-  const plane = document.createElement('a-plane');
-  plane.setAttribute('src', 'new.jpg'); // Your replacement image
-  plane.setAttribute('rotation', '-90 0 0');
-  plane.setAttribute('width', '2');
-  plane.setAttribute('height', '2');
-  plane.setAttribute('visible', 'false');
-  nft.appendChild(plane);
-
-  nft.addEventListener('markerFound', () => plane.setAttribute('visible', true));
-  nft.addEventListener('markerLost', () => plane.setAttribute('visible', false));
-
-  scene.appendChild(nft);
-
-  const camera = document.createElement('a-entity');
-  camera.setAttribute('camera', '');
-  scene.appendChild(camera);
-
-  document.body.appendChild(scene);
+  marker.addEventListener('markerFound', () => plane.setAttribute('visible', true));
+  marker.addEventListener('markerLost', () => plane.setAttribute('visible', false));
 });
 </script>
 </body>
