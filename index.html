@@ -1,120 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NFT AR Poster Replacement</title>
-
-<!-- Three.js -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
-
-<!-- AR.js NFT -->
-<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-nft.js"></script>
-
-<style>
-  body { margin:0; overflow:hidden; background:#000; font-family:Arial,sans-serif; }
-  #status { 
-    position:absolute; top:10px; left:50%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.6); color:#fff; padding:8px 12px; border-radius:6px; z-index:10;
-  }
-  #startButton {
-    position:absolute; top:60px; left:50%; transform:translateX(-50%);
-    padding:10px 16px; font-size:16px; border:none; border-radius:6px; cursor:pointer;
-    z-index:11; background:#222; color:white;
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFT AR Poster Replacement</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-nft.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; font-family:Arial,sans-serif; }
+    #status { position:absolute; top:10px; left:50%; transform:translateX(-50%);
+              background:rgba(0,0,0,0.6); color:#fff; padding:8px 12px; border-radius:6px; z-index:10; }
+  </style>
 </head>
 <body>
+  <div id="status">Loading AR — allow camera access</div>
 
-<div id="status">Click Start Camera to begin</div>
-<button id="startButton">Start Camera</button>
+  <script>
+    const NFT_BASE = 'old'; // base name of your NFT files: old.fset, old.fset3, old.iset
+    const REPLACEMENT_IMAGE = 'new.jpg';
 
-<script>
-const NFT_BASE = 'old';        // NFT marker base filename
-const REPLACEMENT_IMAGE = 'new.jpg'; // Image to spawn
+    let scene, camera, renderer;
+    let arSource, arContext;
+    let markerRoot, posterMesh;
 
-let scene, camera, renderer;
-let arSource, arContext;
-let markerRoot, posterMesh;
-let started = false;
+    // --- Three.js scene ---
+    scene = new THREE.Scene();
+    camera = new THREE.Camera();
+    scene.add(camera);
 
-const statusDiv = document.getElementById('status');
-const startButton = document.getElementById('startButton');
+    renderer = new THREE.WebGLRenderer({ alpha:true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0px';
+    renderer.domElement.style.left = '0px';
+    document.body.appendChild(renderer.domElement);
 
-startButton.addEventListener('click', async () => {
-  if(started) return;
-  started = true;
-  startButton.style.display = 'none';
-  statusDiv.innerText = 'Initializing camera...';
+    // --- AR source ---
+    arSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
+    arSource.init(() => onResize());
+    window.addEventListener('resize', () => onResize());
 
-  // Three.js scene
-  scene = new THREE.Scene();
-  camera = new THREE.Camera();
-  scene.add(camera);
+    function onResize(){
+      arSource.onResizeElement();
+      arSource.copyElementSizeTo(renderer.domElement);
+      if(arContext && arContext.arController){
+        arSource.copyElementSizeTo(arContext.arController.canvas);
+      }
+    }
 
-  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.domElement.style.position = 'absolute';
-  renderer.domElement.style.top = '0px';
-  renderer.domElement.style.left = '0px';
-  document.body.appendChild(renderer.domElement);
+    // --- AR context ---
+    arContext = new THREEx.ArToolkitContext({
+      cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/data/camera_para.dat',
+      detectionMode: 'mono',
+    });
 
-  // AR source
-  arSource = new THREEx.ArToolkitSource({ sourceType:'webcam' });
-  await new Promise(r => arSource.init(r));
+    arContext.init(() => camera.projectionMatrix.copy(arContext.getProjectionMatrix()));
 
-  window.addEventListener('resize', () => onResize());
-  onResize();
+    // --- Marker root ---
+    markerRoot = new THREE.Group();
+    scene.add(markerRoot);
 
-  // AR context
-  arContext = new THREEx.ArToolkitContext({
-    cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/data/camera_para.dat',
-    detectionMode: 'mono',
-  });
-  await new Promise(r => arContext.init(r));
-  camera.projectionMatrix.copy(arContext.getProjectionMatrix());
+    new THREEx.ArNftControls(arContext, markerRoot, NFT_BASE, {
+      changeMatrixMode: 'modelViewMatrix',
+      onUpdate: function(isDetected){
+        if(isDetected){
+          document.getElementById('status').innerText = 'Marker detected — poster ready';
+        } else {
+          document.getElementById('status').innerText = 'Looking for marker...';
+        }
+      }
+    });
 
-  // Marker root
-  markerRoot = new THREE.Group();
-  scene.add(markerRoot);
+    // --- Replacement plane ---
+    const loader = new THREE.TextureLoader();
+    loader.load(REPLACEMENT_IMAGE, function(texture){
+      const geometry = new THREE.PlaneGeometry(1,1);
+      const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+      posterMesh = new THREE.Mesh(geometry, material);
+      posterMesh.rotation.x = 0;
+      posterMesh.rotation.y = 0;
+      posterMesh.position.set(0,0,0);
+      posterMesh.scale.set(1,1,1); // adjust as needed
+      markerRoot.add(posterMesh);
+    }, undefined, function(err){
+      console.error('Failed to load replacement image', err);
+      document.getElementById('status').innerText = 'Failed to load replacement image';
+    });
 
-  // NFT marker controls
-  new THREEx.ArNftControls(arContext, markerRoot, NFT_BASE, { changeMatrixMode: 'modelViewMatrix' });
-
-  // Load replacement image
-  const loader = new THREE.TextureLoader();
-  loader.load(REPLACEMENT_IMAGE, texture => {
-    const geometry = new THREE.PlaneGeometry(1,1);
-    const material = new THREE.MeshBasicMaterial({ map:texture, side:THREE.DoubleSide });
-    posterMesh = new THREE.Mesh(geometry, material);
-    posterMesh.rotation.x = 0;
-    posterMesh.rotation.y = 0;
-    posterMesh.position.set(0,0,0);
-    posterMesh.scale.set(1,1,1);
-    markerRoot.add(posterMesh);
-    statusDiv.innerText = 'Camera ready — point at NFT marker';
-  }, undefined, err => {
-    console.error(err);
-    statusDiv.innerText = 'Failed to load replacement image';
-  });
-
-  animate();
-});
-
-function onResize(){
-  arSource.onResizeElement();
-  arSource.copyElementSizeTo(renderer.domElement);
-  if(arContext && arContext.arController){
-    arSource.copyElementSizeTo(arContext.arController.canvas);
-  }
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  if(arSource && arSource.ready && arContext) arContext.update(arSource.domElement);
-  renderer.render(scene, camera);
-}
-</script>
-
+    // --- Render loop ---
+    function animate(){
+      requestAnimationFrame(animate);
+      if(arSource.ready) arContext.update(arSource.domElement);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
 </body>
 </html>
