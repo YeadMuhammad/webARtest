@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Debug + Spawn</title>
+<style>
+  html,body { margin:0; height:100%; background:#111; color:#fff; font-family:Arial; }
+  #container { position:relative; width:100%; height:100vh; overflow:hidden; }
+  video#cam {
+    position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover;
+    transform:scaleX(-1);
+  }
+  canvas#overlay {
+    position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none;
+  }
+  img#spawnImg {
+    position:absolute; left:0; top:0; width:0; height:0;
+    transform-origin:0 0; pointer-events:none; display:none; border:2px solid rgba(255,255,255,0.25);
+  }
+  #ui {
+    position:absolute; top:12px; left:12px; z-index:20;
+    background:rgba(0,0,0,0.45); padding:8px 12px; border-radius:8px;
+  }
+  #statusBox {
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:20;
+    background: rgba(0,0,0,0.6); padding:8px 12px; border-radius:8px; font-size:15px;
+  }
+  button { font-size:14px; padding:6px 10px; border-radius:6px; border:none; cursor:pointer; margin-right:6px; }
+</style>
+</head>
+<body>
+<div id="container">
+  <video id="cam" autoplay playsinline></video>
+  <canvas id="overlay"></canvas>
+  <img id="spawnImg" src="./new.jpg" alt="spawn">
+
+  <div id="ui">
+    <button id="startBtn">Start Camera</button>
+    <button id="stopBtn">Stop Camera</button>
+    <div style="margin-top:6px;font-size:13px;color:#ddd;">
+      Hold QR close to camera, well-lit.
+    </div>
+  </div>
+
+  <div id="statusBox">Idle</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+(function(){
+  const video = document.getElementById('cam');
+  const overlay = document.getElementById('overlay');
+  const ctx = overlay.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusBox = document.getElementById('statusBox');
+  const spawnImg = document.getElementById('spawnImg');
+
+  let stream = null;
+  let running = false;
+  let detector = null;
+
+  function resizeOverlay(){
+    const rect = video.getBoundingClientRect();
+    overlay.width = Math.floor(rect.width);
+    overlay.height = Math.floor(rect.height);
+    overlay.style.width = rect.width+'px';
+    overlay.style.height = rect.height+'px';
+  }
+
+  function mapVideoPointToDisplay(px,py,vidW,vidH,dispW,dispH){
+    const videoRatio = vidW/vidH;
+    const dispRatio = dispW/dispH;
+    let srcW=vidW, srcH=vidH, srcX=0, srcY=0;
+    if(videoRatio>dispRatio){ srcW=vidH*dispRatio; srcX=(vidW-srcW)/2; }
+    else{ srcH=vidW/dispRatio; srcY=(vidH-srcH)/2; }
+    const nx=(px-srcX)/srcW;
+    const ny=(py-srcY)/srcH;
+    return { x: nx*dispW, y: ny*dispH };
+  }
+
+  function drawDetection(cornersDisplay,text){
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    if(!cornersDisplay || cornersDisplay.length<4) return;
+    ctx.lineWidth=4; ctx.strokeStyle='lime'; ctx.beginPath();
+    ctx.moveTo(cornersDisplay[0].x,cornersDisplay[0].y);
+    for(let i=1;i<cornersDisplay.length;i++) ctx.lineTo(cornersDisplay[i].x,cornersDisplay[i].y);
+    ctx.closePath(); ctx.stroke();
+    ctx.fillStyle='rgba(0,255,0,0.9)';
+    for(const p of cornersDisplay) ctx.fillRect(p.x-4,p.y-4,8,8);
+    ctx.font='18px Arial';
+    const textPadding=6;
+    const metrics=ctx.measureText(text);
+    const textW=metrics.width;
+    const tx=cornersDisplay[0].x;
+    const ty=Math.max(20,cornersDisplay[0].y-10);
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    ctx.fillRect(tx-textPadding, ty-18-textPadding/2, textW+textPadding*2,22+textPadding/2);
+    ctx.fillStyle='lime';
+    ctx.fillText(text,tx,ty);
+  }
+
+  function placeSpawnImage(cornersDisplay,imageUrl){
+    const xs=cornersDisplay.map(p=>p.x), ys=cornersDisplay.map(p=>p.y);
+    const minX=Math.min(...xs), minY=Math.min(...ys);
+    const maxX=Math.max(...xs), maxY=Math.max(...ys);
+    const width=maxX-minX, height=maxY-minY;
+    const dx=cornersDisplay[1].x-cornersDisplay[0].x;
+    const dy=cornersDisplay[1].y-cornersDisplay[0].y;
+    const angleDeg=Math.atan2(dy,dx)*180/Math.PI;
+
+    if(spawnImg.src.indexOf(imageUrl)===-1 && !spawnImg.dataset.loading){
+      spawnImg.dataset.loading='1';
+      spawnImg.onload=()=>{ delete spawnImg.dataset.loading; spawnImg.style.display='block'; }
+      spawnImg.onerror=()=>{ delete spawnImg.dataset.loading; statusBox.textContent='Spawn image failed'; }
+      spawnImg.src=imageUrl;
+    } else { spawnImg.style.display='block'; }
+
+    spawnImg.style.left=minX+'px';
+    spawnImg.style.top=minY+'px';
+    spawnImg.style.width=width+'px';
+    spawnImg.style.height=height+'px';
+    spawnImg.style.transform=`rotate(${angleDeg}deg)`;
+  }
+
+  function clearOverlay(){
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    spawnImg.style.display='none';
+  }
+
+  async function detectLoop(){
+    if(!running) return;
+    const vidW=video.videoWidth, vidH=video.videoHeight;
+    if(!vidW || !vidH){ requestAnimationFrame(detectLoop); return; }
+
+    const temp=document.createElement('canvas');
+    temp.width=vidW; temp.height=vidH;
+    const tctx=temp.getContext('2d');
+    try{ tctx.drawImage(video,0,0,vidW,vidH); } catch(e){ requestAnimationFrame(detectLoop); return; }
+
+    let qrText=null;
+    let corners=null;
+
+    if(detector){
+      try{
+        const bitmap=await createImageBitmap(temp);
+        const detections=await detector.detect(bitmap);
+        bitmap.close?.();
+        if(detections && detections.length){
+          const d=detections[0];
+          qrText=d.rawValue||d.rawData||null;
+          if(d.cornerPoints && d.cornerPoints.length>=4){
+            corners=d.cornerPoints.map(p=>({x:p.x,y:p.y}));
+          } else if(d.boundingBox){
+            const bb=d.boundingBox;
+            corners=[{x:bb.x,y:bb.y},{x:bb.x+bb.width,y:bb.y},{x:bb.x+bb.width,y:bb.y+bb.height},{x:bb.x,y:bb.y+bb.height}];
+          }
+        }
+      } catch(e){ console.warn('BarcodeDetector failed',e); }
+    }
+
+    if(!qrText){
+      const imageData=tctx.getImageData(0,0,temp.width,temp.height);
+      const code=jsQR(imageData.data,imageData.width,imageData.height);
+      if(code){ qrText=code.data; corners=[code.location.topLeftCorner,code.location.topRightCorner,code.location.bottomRightCorner,code.location.bottomLeftCorner]; }
+    }
+
+    if(corners && corners.length>=4){
+      resizeOverlay();
+      const dispW=overlay.width, dispH=overlay.height;
+      const mapped=corners.map(p=>mapVideoPointToDisplay(p.x,p.y,vidW,vidH,dispW,dispH));
+      drawDetection(mapped,qrText||'');
+      statusBox.textContent=`QR detected: "${qrText||'(unknown)'}"`;
+      // spawn for a specific QR, change "poster1" below
+      if(qrText==='poster1') placeSpawnImage(mapped,'./new.jpg');
+      else spawnImg.style.display='none';
+    } else { clearOverlay(); statusBox.textContent='No QR detected'; }
+
+    requestAnimationFrame(detectLoop);
+  }
+
+  async function startCamera(){
+    try{
+      startBtn.disabled=true;
+      const constraints={ video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false };
+      stream=await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject=stream;
+      await new Promise(r=>video.onloadedmetadata=r);
+
+      resizeOverlay();
+      window.addEventListener('resize',resizeOverlay);
+
+      if('BarcodeDetector' in window){ try{ detector=new BarcodeDetector({formats:['qr_code']}); } catch(e){ detector=null; } }
+
+      running=true;
+      detectLoop();
+      statusBox.textContent='Camera started — looking for QR';
+    } catch(err){
+      console.error(err);
+      statusBox.textContent='Camera start error';
+    } finally{ startBtn.disabled=false; }
+  }
+
+  function stopCamera(){
+    running=false;
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    clearOverlay();
+    statusBox.textContent='Stopped';
+  }
+
+  startBtn.addEventListener('click',startCamera);
+  stopBtn.addEventListener('click',stopCamera);
+})();
+</script>
+</body>
+</html>
