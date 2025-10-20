@@ -1,213 +1,157 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Poster Replacement AR (Specific QR)</title>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Poster Replacement AR with Status</title>
 
-    <!-- Three.js -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+  <!-- Three.js -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+  <!-- jsQR -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
-    <!-- jsQR (fallback for QR detection) -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; background:black; font-family:sans-serif; color:white; }
+    video { position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+    canvas { position:fixed; top:0; left:0; }
+    #startButton {
+      position: fixed; top:20px; left:50%; transform:translateX(-50%);
+      background:#222; color:white; padding:10px 20px; border:none; border-radius:8px;
+      font-size:16px; cursor:pointer; z-index:10;
+    }
+    #statusBox {
+      position: fixed; bottom:20px; left:50%; transform:translateX(-50%);
+      background: rgba(0,0,0,0.6); padding:10px 20px; border-radius:8px; font-size:16px;
+      z-index:10; max-width:90%; text-align:center;
+    }
+  </style>
+</head>
+<body>
+  <button id="startButton">Start Camera</button>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="three-canvas"></canvas>
+  <div id="statusBox">Idle</div>
 
-    <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        background: black;
-      }
-      video {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-      canvas {
-        position: fixed;
-        top: 0;
-        left: 0;
-      }
-      #startButton {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #222;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        cursor: pointer;
-        z-index: 10;
-      }
-    </style>
-  </head>
+  <script>
+    const video = document.getElementById("video");
+    const startButton = document.getElementById("startButton");
+    const statusBox = document.getElementById("statusBox");
 
-  <body>
-    <button id="startButton">Start Camera</button>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="three-canvas"></canvas>
+    // Your posters mapped to QR text
+    const posters = {
+      poster1: "./new.jpg", // change to your poster
+      poster2: "./second.jpg" // optional second QR
+    };
 
-    <script>
-      const video = document.getElementById("video");
-      const startButton = document.getElementById("startButton");
+    let scene, camera, renderer, posterMesh;
+    let detector;
+    let isRunning = false;
 
-      // 🔹 Your poster images
-      const posters = {
-        poster1: "./new.jpg", // this will appear when QR content == "poster1"
-        poster2: "./second.jpg", // optional, another QR content -> another poster
-      };
+    function initThree(width, height) {
+      scene = new THREE.Scene();
+      camera = new THREE.OrthographicCamera(
+        width / -2, width / 2, height / 2, height / -2, 1, 1000
+      );
+      camera.position.z = 10;
 
-      let scene, camera, renderer, texture, posterMesh;
-      let detector;
-      let isRunning = false;
+      renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("three-canvas"), alpha:true });
+      renderer.setSize(width, height);
 
-      // Initialize Three.js
-      function initThree(width, height) {
-        scene = new THREE.Scene();
-        camera = new THREE.OrthographicCamera(
-          width / -2,
-          width / 2,
-          height / 2,
-          height / -2,
-          1,
-          1000
-        );
-        camera.position.z = 10;
+      // default placeholder
+      const geometry = new THREE.PlaneGeometry(100,100);
+      const material = new THREE.MeshBasicMaterial({ color:0xffffff });
+      posterMesh = new THREE.Mesh(geometry, material);
+      posterMesh.visible = false;
+      scene.add(posterMesh);
+    }
 
-        renderer = new THREE.WebGLRenderer({
-          canvas: document.getElementById("three-canvas"),
-          alpha: true,
-        });
-        renderer.setSize(width, height);
+    async function detectLoop() {
+      if (!isRunning) return;
 
-        // default placeholder poster
-        const textureLoader = new THREE.TextureLoader();
-        texture = textureLoader.load("./new.jpg");
-        const geometry = new THREE.PlaneGeometry(100, 100);
-        const material = new THREE.MeshBasicMaterial({ map: texture });
-        posterMesh = new THREE.Mesh(geometry, material);
-        posterMesh.visible = false;
-        scene.add(posterMesh);
-      }
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
 
-      // QR detection loop
-      async function detectLoop() {
-        if (!isRunning) return;
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+      let qrText = null;
+      let bbox = null;
 
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
-        let detections = [];
-        if (detector) {
-          try {
-            detections = await detector.detect(canvas);
-          } catch (e) {
-            console.warn("BarcodeDetector failed", e);
+      // try BarcodeDetector
+      if (detector) {
+        try {
+          const detections = await detector.detect(canvas);
+          if (detections.length>0) {
+            qrText = detections[0].rawValue;
+            bbox = detections[0].boundingBox;
           }
+        } catch(e) { console.warn("BarcodeDetector failed", e); }
+      }
+
+      // fallback jsQR
+      if (!qrText) {
+        const code = jsQR(imageData.data, canvas.width, canvas.height);
+        if (code) {
+          qrText = code.data;
+          const corners = code.location;
+          const minX = Math.min(corners.topLeftCorner.x, corners.bottomLeftCorner.x);
+          const maxX = Math.max(corners.topRightCorner.x, corners.bottomRightCorner.x);
+          const minY = Math.min(corners.topLeftCorner.y, corners.topRightCorner.y);
+          const maxY = Math.max(corners.bottomLeftCorner.y, corners.bottomRightCorner.y);
+          bbox = { x:minX, y:minY, width:maxX-minX, height:maxY-minY };
         }
+      }
 
-        let qrText = null;
-        let bbox = null;
+      if (qrText && bbox) {
+        statusBox.textContent = `QR detected: "${qrText}"`;
 
-        if (detections.length > 0) {
-          const d = detections[0];
-          qrText = d.rawValue; // text inside QR code
-          bbox = d.boundingBox;
-        } else {
-          // fallback: jsQR
-          const code = jsQR(imageData.data, canvas.width, canvas.height);
-          if (code) {
-            qrText = code.data; // text inside QR code
-            const corners = code.location;
-            const minX = Math.min(
-              corners.topLeftCorner.x,
-              corners.bottomLeftCorner.x
-            );
-            const maxX = Math.max(
-              corners.topRightCorner.x,
-              corners.bottomRightCorner.x
-            );
-            const minY = Math.min(
-              corners.topLeftCorner.y,
-              corners.topRightCorner.y
-            );
-            const maxY = Math.max(
-              corners.bottomLeftCorner.y,
-              corners.bottomRightCorner.y
-            );
-            const width = maxX - minX;
-            const height = maxY - minY;
-            bbox = { x: minX, y: minY, width, height };
-          }
-        }
-
-        if (qrText && bbox) {
-          console.log("Detected QR:", qrText);
-
-          // ✅ Only react to specific QR content
-          if (qrText in posters) {
-            updatePoster(bbox, posters[qrText]);
-          } else {
-            console.log("QR not recognized:", qrText);
-            posterMesh.visible = false;
-          }
+        if (qrText in posters) {
+          updatePoster(bbox, posters[qrText]);
+          statusBox.textContent += " → Poster spawned successfully!";
         } else {
           posterMesh.visible = false;
+          statusBox.textContent += " → QR not recognized, no poster spawned.";
         }
-
-        renderer.render(scene, camera);
-        requestAnimationFrame(detectLoop);
+      } else {
+        posterMesh.visible = false;
+        statusBox.textContent = "No QR detected";
       }
 
-      // Update poster position and image
-      function updatePoster(bbox, imageUrl) {
-        const textureLoader = new THREE.TextureLoader();
-        textureLoader.load(imageUrl, (newTexture) => {
-          posterMesh.material.map = newTexture;
-          posterMesh.material.needsUpdate = true;
-        });
+      renderer.render(scene,camera);
+      requestAnimationFrame(detectLoop);
+    }
 
-        posterMesh.visible = true;
-        posterMesh.scale.set(bbox.width, bbox.height, 1);
-        posterMesh.position.set(
-          bbox.x + bbox.width / 2 - video.videoWidth / 2,
-          -bbox.y - bbox.height / 2 + video.videoHeight / 2,
-          0
-        );
-      }
+    function updatePoster(bbox, imageUrl) {
+      const loader = new THREE.TextureLoader();
+      loader.load(imageUrl, (tex)=>{
+        posterMesh.material.map = tex;
+        posterMesh.material.needsUpdate = true;
+      });
+      posterMesh.visible = true;
+      posterMesh.scale.set(bbox.width, bbox.height, 1);
+      posterMesh.position.set(
+        bbox.x + bbox.width/2 - video.videoWidth/2,
+        -bbox.y - bbox.height/2 + video.videoHeight/2,
+        0
+      );
+    }
 
-      // Start camera and everything
-      startButton.onclick = async () => {
-        startButton.style.display = "none";
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-        video.srcObject = stream;
-        await new Promise((r) => (video.onloadedmetadata = r));
+    startButton.onclick = async ()=>{
+      startButton.style.display = "none";
+      const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
+      video.srcObject = stream;
+      await new Promise(r=>video.onloadedmetadata=r);
 
-        const width = video.videoWidth;
-        const height = video.videoHeight;
+      initThree(video.videoWidth, video.videoHeight);
+      document.getElementById("three-canvas").width = video.videoWidth;
+      document.getElementById("three-canvas").height = video.videoHeight;
 
-        initThree(width, height);
-        document.getElementById("three-canvas").width = width;
-        document.getElementById("three-canvas").height = height;
+      if ("BarcodeDetector" in window) detector = new BarcodeDetector({ formats:["qr_code"] });
 
-        if ("BarcodeDetector" in window) {
-          detector = new BarcodeDetector({ formats: ["qr_code"] });
-        }
-
-        isRunning = true;
-        detectLoop();
-      };
-    </script>
-  </body>
+      isRunning = true;
+      detectLoop();
+    }
+  </script>
+</body>
 </html>
