@@ -3,69 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR.js NFT Example</title>
-
+<title>AR NFT Replacement</title>
 <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-
 <style>
-body { margin:0; overflow:hidden; }
-.arjs-loader {
-  position:absolute; top:0; left:0; width:100%; height:100%;
-  background:rgba(0,0,0,0.8); color:white; display:flex;
-  align-items:center; justify-content:center; font-size:1.2em; z-index:9999;
-}
+  body { margin:0; overflow:hidden; background:#000; }
+  #startBtn {
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%, -50%);
+    z-index:999;
+    padding:12px 24px;
+    font-size:18px;
+    cursor:pointer;
+  }
 </style>
 </head>
 <body>
-
-<div class="arjs-loader" id="loader">Loading AR — Allow camera access...</div>
-
-<a-scene
-  embedded
-  vr-mode-ui="enabled:false"
-  renderer="logarithmicDepthBuffer:true"
-  arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled:false;"
->
-  <a-nft
-    type="nft"
-    url="old"       <!-- your NFT base name -->
-    smooth="true"
-    smoothCount="10"
-    smoothTolerance="0.01"
-    smoothThreshold="5"
-  >
-    <!-- Replacement 2D plane -->
-    <a-plane
-      src="new.jpg"
-      rotation="-90 0 0"
-      width="2"
-      height="2"
-      visible="false"
-      id="replacement"
-    ></a-plane>
-  </a-nft>
-
-  <a-entity camera></a-entity>
-</a-scene>
+<button id="startBtn">Start Camera</button>
 
 <script>
-const loader = document.getElementById('loader');
-const replacement = document.getElementById('replacement');
-const marker = document.querySelector('a-nft');
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('startBtn').style.display = 'none';
 
-marker.addEventListener('markerFound', () => {
-  loader.style.display = 'none';
-  replacement.setAttribute('visible', true);
-  console.log('Marker found — showing replacement!');
-});
+  const scene = document.createElement('a-scene');
+  scene.setAttribute('embedded', '');
+  scene.setAttribute('vr-mode-ui', 'enabled:false');
+  scene.setAttribute('renderer', 'logarithmicDepthBuffer:true');
+  scene.setAttribute('arjs', 'trackingMethod:best;sourceType:webcam;debugUIEnabled:false;');
 
-marker.addEventListener('markerLost', () => {
-  loader.style.display = 'flex';
-  replacement.setAttribute('visible', false);
-  console.log('Marker lost');
+  const nft = document.createElement('a-nft');
+  nft.setAttribute('type', 'nft');
+  nft.setAttribute('url', 'old'); // Your NFT base name (old.fset etc.)
+  nft.setAttribute('smooth', 'true');
+  nft.setAttribute('smoothCount', '10');
+  nft.setAttribute('smoothTolerance', '0.01');
+  nft.setAttribute('smoothThreshold', '5');
+
+  // 3D replacement example (plane)
+  const plane = document.createElement('a-plane');
+  plane.setAttribute('src', 'new.jpg'); // Your replacement image
+  plane.setAttribute('rotation', '-90 0 0');
+  plane.setAttribute('width', '2');
+  plane.setAttribute('height', '2');
+  plane.setAttribute('visible', 'false');
+  nft.appendChild(plane);
+
+  nft.addEventListener('markerFound', () => plane.setAttribute('visible', true));
+  nft.addEventListener('markerLost', () => plane.setAttribute('visible', false));
+
+  scene.appendChild(nft);
+
+  const camera = document.createElement('a-entity');
+  camera.setAttribute('camera', '');
+  scene.appendChild(camera);
+
+  document.body.appendChild(scene);
 });
 </script>
-
 </body>
 </html>
