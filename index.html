@@ -1,75 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR.js NFT Poster Replacement</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR.js NFT Poster Replacement</title>
 
-  <!-- A-Frame library -->
-  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1c2407b26c61958baa93967b5412487cd94b290b/dist/aframe-master.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
-  <!-- AR.js NFT for A-Frame -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-
-  <style>
-    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-    .arjs-loader {
-      height: 100%; width: 100%; position: absolute; top: 0; left: 0;
-      background-color: rgba(0, 0, 0, 0.8); z-index: 9999;
-      display: flex; justify-content: center; align-items: center;
-      color: white; font-size: 1.2em; text-align: center;
-    }
-  </style>
+<style>
+body { margin: 0; overflow: hidden; }
+.arjs-loader {
+  position: absolute; top:0; left:0; width:100%; height:100%;
+  background: rgba(0,0,0,0.7); color:white; display:flex;
+  align-items:center; justify-content:center; font-size:1.3em; z-index:9999;
+}
+</style>
 </head>
 <body>
-  <!-- Loader shown while AR initializes -->
-  <div class="arjs-loader" id="loader">Loading AR — Allow camera access...</div>
 
-  <a-scene
-    embedded
-    vr-mode-ui="enabled: false;"
-    renderer="logarithmicDepthBuffer: true;"
-    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-    id="scene"
+<div class="arjs-loader" id="loader">Loading AR — Allow camera access...</div>
+
+<a-scene
+  embedded
+  vr-mode-ui="enabled:false"
+  renderer="logarithmicDepthBuffer:true"
+  arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled:false;"
+>
+  <a-nft
+    id="marker"
+    type="nft"
+    url="old"
+    smooth="true"
+    smoothCount="10"
+    smoothTolerance="0.01"
+    smoothThreshold="5"
   >
-    <!-- NFT marker -->
-    <a-nft
-      type="nft"
-      url="old" <!-- your NFT marker base name -->
-      smooth="true"
-      smoothCount="10"
-      smoothTolerance=".01"
-      smoothThreshold="5"
-      id="marker"
-    >
-      <!-- Replacement content: a plane with your image -->
-      <a-plane src="new.jpg" width="1" height="1" position="0 0 0" rotation="0 0 0"></a-plane>
-    </a-nft>
+    <!-- Replacement plane, adjust scale for visibility -->
+    <a-plane
+      id="replacement"
+      src="new.jpg"
+      rotation="-90 0 0"
+      width="2"
+      height="2"
+      position="0 0 0"
+    ></a-plane>
+  </a-nft>
 
-    <!-- Camera -->
-    <a-entity camera></a-entity>
-  </a-scene>
+  <a-entity camera></a-entity>
+</a-scene>
 
-  <script>
-    const loader = document.getElementById('loader');
-    const scene = document.getElementById('scene');
+<script>
+const loader = document.getElementById('loader');
+const marker = document.getElementById('marker');
+const replacement = document.getElementById('replacement');
 
-    // Wait for AR.js to initialize
-    scene.addEventListener('loaded', () => {
-      // NFT descriptor files might take a moment to load
-      const marker = document.getElementById('marker');
+// Hide loader when marker is found
+marker.addEventListener('markerFound', () => {
+  loader.style.display = 'none';
+  replacement.setAttribute('visible', true);
+  console.log('Marker detected — showing replacement!');
+});
 
-      marker.addEventListener('markerFound', () => {
-        loader.style.display = 'none';
-        console.log('Marker found — AR active');
-      });
+// Show loader when marker is lost
+marker.addEventListener('markerLost', () => {
+  loader.style.display = 'flex';
+  replacement.setAttribute('visible', false);
+  console.log('Marker lost');
+});
+</script>
 
-      marker.addEventListener('markerLost', () => {
-        loader.style.display = 'flex';
-        loader.innerText = 'Point the camera at the poster to activate AR';
-        console.log('Marker lost');
-      });
-    });
-  </script>
 </body>
 </html>
