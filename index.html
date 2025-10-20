@@ -1,104 +1,53 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>AR.js NFT Example</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <!-- Load stable Three.js + AR.js NFT build -->
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/three.js/build/ar-nft.js"></script>
-    <style>
-      body, html { margin:0; overflow:hidden; background:#000; }
-      #status { position:absolute; top:10px; left:10px; color:white; font-family:monospace; z-index:2; }
-      #startBtn { position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
-                  padding:12px 24px; font-size:16px; background:#0a0; color:white;
-                  border:none; border-radius:8px; z-index:2; cursor:pointer; }
-      canvas { position:absolute; top:0; left:0; }
-    </style>
-  </head>
-  <body>
-    <div id="status">Status: waiting</div>
-    <button id="startBtn">Start Camera</button>
+<script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1c2407b26c61958baa93967b5412487cd94b290b/dist/aframe-master.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
-    <script>
-      const statusDiv = document.getElementById('status');
-      const startBtn = document.getElementById('startBtn');
+<style>
+  .arjs-loader {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
 
-      startBtn.onclick = () => {
-        startBtn.style.display = 'none';
-        initAR();
-      };
+  .arjs-loader div {
+    text-align: center;
+    font-size: 1.25em;
+    color: white;
+  }
+</style>
 
-      function log(msg) {
-        console.log(msg);
-        statusDiv.innerText = msg;
-      }
-
-      function initAR() {
-        log("Initializing AR.js NFT...");
-        const scene = new THREE.Scene();
-        const camera = new THREE.Camera();
-        scene.add(camera);
-
-        const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        const light = new THREE.AmbientLight(0xffffff);
-        scene.add(light);
-
-        // Load NFT marker data (old.* files must be in same folder)
-        const arToolkitSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
-
-        arToolkitSource.init(function onReady() {
-          setTimeout(() => onResize(), 1000);
-        });
-
-        window.addEventListener('resize', () => onResize());
-        function onResize() {
-          arToolkitSource.onResizeElement();
-          arToolkitSource.copyElementSizeTo(renderer.domElement);
-          if (arToolkitContext.arController !== null) {
-            arToolkitSource.copyElementSizeTo(arToolkitContext.arController.canvas);
-          }
-        }
-
-        const arToolkitContext = new THREEx.ArToolkitContext({
-          detectionMode: 'mono',
-          cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/data/data/camera_para.dat'
-        });
-
-        arToolkitContext.init(() => {
-          camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-          log("AR.js context initialized, loading NFT marker...");
-        });
-
-        const markerRoot = new THREE.Group();
-        scene.add(markerRoot);
-
-        const arMarkerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
-          type: 'nft',
-          descriptorsUrl: 'old'
-        });
-
-        const texture = new THREE.TextureLoader().load('new.jpg');
-        const geometry = new THREE.PlaneGeometry(1, 1, 4, 4);
-        const material = new THREE.MeshBasicMaterial({ map: texture });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        markerRoot.add(mesh);
-
-        let lastTimeMsec = 0;
-        requestAnimationFrame(function animate(nowMsec) {
-          requestAnimationFrame(animate);
-          const deltaMsec = nowMsec - lastTimeMsec;
-          lastTimeMsec = nowMsec;
-          if (arToolkitSource.ready) {
-            arToolkitContext.update(arToolkitSource.domElement);
-            markerRoot.visible ? log("Marker visible") : log("Searching marker...");
-          }
-          renderer.render(scene, camera);
-        });
-      }
-    </script>
-  </body>
-</html>
+<body style="margin : 0px; overflow: hidden;">
+  <!-- minimal loader shown until image descriptors are loaded -->
+  <div class="arjs-loader">
+    <div>Loading, please wait...</div>
+  </div>
+  <a-scene
+    vr-mode-ui="enabled: false;"
+    renderer="logarithmicDepthBuffer: true;"
+    embedded
+    arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;"
+  >
+    <a-nft
+      type="nft"
+      url="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/trex-image/trex"
+      smooth="true"
+      smoothCount="10"
+      smoothTolerance=".01"
+      smoothThreshold="5"
+    >
+      <a-entity
+        gltf-model="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/scene.gltf"
+        scale="5 5 5"
+        position="50 150 0"
+      >
+      </a-entity>
+    </a-nft>
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
