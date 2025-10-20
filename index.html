@@ -4,43 +4,52 @@
   <meta charset="utf-8">
   <title>Desktop-Friendly MindAR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- ✅ Load correct A-Frame + MindAR version -->
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.7/dist/mindar-image.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.7/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body style="margin:0; overflow:hidden;">
-  <button id="startButton" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:20px;padding:10px 20px;z-index:10;">
+  
+  <!-- Start button -->
+  <button id="startButton" style="position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);font-size:20px;padding:10px 20px;z-index:10;">
     Start AR
   </button>
 
-  <mindar-image id="mindarContainer" imageTargetSrc="./targets.mind" autoStart="false" ui-loading="yes" ui-scanning="yes" ui-error="yes" style="display:none;">
-    <a-scene mindar-image embedded color-space="sRGB" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: true">
-      <a-camera position="0 0 0" look-controls="false"></a-camera>
-      <a-entity mindar-image-target="targetIndex: 0">
-        <a-plane src="./new.jpg" height="1" width="0.7" position="0 0 0"></a-plane>
-      </a-entity>
-    </a-scene>
-  </mindar-image>
+  <!-- MindAR container -->
+  <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+           embedded
+           color-space="sRGB"
+           vr-mode-ui="enabled: false"
+           device-orientation-permission-ui="enabled: true"
+           id="scene"
+           style="display:none;">
+           
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <a-entity mindar-image-target="targetIndex: 0">
+      <a-plane src="./new.jpg" height="1" width="0.7" position="0 0 0"></a-plane>
+    </a-entity>
+
+  </a-scene>
 
   <script>
     const startBtn = document.getElementById('startButton');
-    const mindarEl = document.getElementById('mindarContainer');
+    const sceneEl = document.getElementById('scene');
 
     startBtn.addEventListener('click', async () => {
       startBtn.style.display = 'none';
-      mindarEl.style.display = 'block';
-
-      // Wait for MindAR component to initialize
-      const mindarComponent = mindarEl.components['mindar-image'];
-      if (mindarComponent) {
-        try {
-          await mindarComponent.start(); // Start AR
-        } catch(err) {
-          alert("MindAR failed to start: " + err);
-        }
-      } else {
-        alert("MindAR component not ready yet. Reload the page.");
+      sceneEl.style.display = 'block';
+      
+      try {
+        const mindarComponent = sceneEl.components["mindar-image"];
+        await mindarComponent.start();
+      } catch (err) {
+        alert("MindAR failed to start: " + err);
       }
     });
   </script>
+
 </body>
 </html>
