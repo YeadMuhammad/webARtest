@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR.js NFT Poster Replacement</title>
+<title>AR.js NFT Example</title>
 
 <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
 <style>
-body { margin: 0; overflow: hidden; }
+body { margin:0; overflow:hidden; }
 .arjs-loader {
-  position: absolute; top:0; left:0; width:100%; height:100%;
-  background: rgba(0,0,0,0.7); color:white; display:flex;
-  align-items:center; justify-content:center; font-size:1.3em; z-index:9999;
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.8); color:white; display:flex;
+  align-items:center; justify-content:center; font-size:1.2em; z-index:9999;
 }
 </style>
 </head>
@@ -28,22 +28,21 @@ body { margin: 0; overflow: hidden; }
   arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled:false;"
 >
   <a-nft
-    id="marker"
     type="nft"
-    url="old"
+    url="old"       <!-- your NFT base name -->
     smooth="true"
     smoothCount="10"
     smoothTolerance="0.01"
     smoothThreshold="5"
   >
-    <!-- Replacement plane, adjust scale for visibility -->
+    <!-- Replacement 2D plane -->
     <a-plane
-      id="replacement"
       src="new.jpg"
       rotation="-90 0 0"
       width="2"
       height="2"
-      position="0 0 0"
+      visible="false"
+      id="replacement"
     ></a-plane>
   </a-nft>
 
@@ -52,17 +51,15 @@ body { margin: 0; overflow: hidden; }
 
 <script>
 const loader = document.getElementById('loader');
-const marker = document.getElementById('marker');
 const replacement = document.getElementById('replacement');
+const marker = document.querySelector('a-nft');
 
-// Hide loader when marker is found
 marker.addEventListener('markerFound', () => {
   loader.style.display = 'none';
   replacement.setAttribute('visible', true);
-  console.log('Marker detected — showing replacement!');
+  console.log('Marker found — showing replacement!');
 });
 
-// Show loader when marker is lost
 marker.addEventListener('markerLost', () => {
   loader.style.display = 'flex';
   replacement.setAttribute('visible', false);
