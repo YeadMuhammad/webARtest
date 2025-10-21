@@ -2,68 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NFT AR Replacement</title>
-
-  <!-- A-Frame -->
-  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
-  <!-- AR.js NFT build with WASM included -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-
+  <title>WebXR Image AR</title>
   <style>
-    body { margin:0; overflow:hidden; font-family: Arial; }
-    #status { position:absolute; top:10px; left:50%; transform:translateX(-50%);
-      z-index: 10; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius:6px; color:white;
-    }
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
 
-<div id="status">Idle</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js';
+import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/ARButton.js';
 
-<a-scene
-    vr-mode-ui="enabled: false;"
-    embedded
-    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
->
-  <!-- Local NFT marker -->
-  <a-nft
-      type="nft"
-      url="old"   <!-- your NFT basename -->
-      smooth="true"
-      smoothCount="10"
-      smoothTolerance="0.01"
-      smoothThreshold="5"
-      id="marker"
-  >
-    <!-- Replacement image -->
-    <a-plane
-        src="new.jpg"
-        rotation="-90 0 0"
-        width="1"
-        height="1"
-        visible="false"
-        id="replacement"
-    ></a-plane>
-  </a-nft>
+let camera, scene, renderer;
+let reticle, spawnPlane;
+let xrSession, xrReferenceSpace, anchorCreated = false;
 
-  <a-entity camera></a-entity>
-</a-scene>
+init();
+animate();
 
-<script>
-const marker = document.getElementById('marker');
-const replacement = document.getElementById('replacement');
-const status = document.getElementById('status');
+async function init() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera();
 
-marker.addEventListener('markerFound', () => {
-  replacement.setAttribute('visible', true);
-  status.innerText = 'Marker detected — replacement visible';
-});
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
 
-marker.addEventListener('markerLost', () => {
-  replacement.setAttribute('visible', false);
-  status.innerText = 'Marker lost';
-});
+  // ARButton to start WebXR session
+  document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['image-tracking', 'anchors', 'local-floor'] }));
+
+  // Load spawn image as texture
+  const textureLoader = new THREE.TextureLoader();
+  const spawnTexture = textureLoader.load('assets/spawn.jpg');
+
+  const planeGeometry = new THREE.PlaneGeometry(0.2, 0.2); // size in meters
+  const planeMaterial = new THREE.MeshBasicMaterial({ map: spawnTexture, side: THREE.DoubleSide });
+  spawnPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+  spawnPlane.visible = false; // hide until poster is detected
+  scene.add(spawnPlane);
+
+  // Wait for session to start
+  renderer.xr.addEventListener('sessionstart', async () => {
+    xrSession = renderer.xr.getSession();
+    xrReferenceSpace = await xrSession.requestReferenceSpace('local-floor');
+
+    // Load poster image for tracking
+    const img = await fetch('assets/poster.jpg').then(r => r.blob()).then(b => createImageBitmap(b));
+    await xrSession.updateTrackedImages([{ image: img, widthInMeters: 0.2 }]);
+
+    xrSession.addEventListener('trackedevent', async (event) => {
+      const imageIndex = event.index;
+      const imageState = event.result;
+
+      if (imageState.tracking && !anchorCreated) {
+        // Create anchor at the detected poster
+        const pose = event.getPose(xrReferenceSpace);
+        if (!pose) return;
+
+        const anchor = await xrSession.requestAnchor(pose.transform, xrReferenceSpace);
+        spawnPlane.visible = true;
+        anchor.context = spawnPlane;
+
+        anchor.addEventListener('update', (e) => {
+          // update spawnPlane to anchor transform
+          const t = e.anchor.transform;
+          spawnPlane.position.set(t.position.x, t.position.y, t.position.z);
+          spawnPlane.quaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
+        });
+
+        anchorCreated = true;
+      }
+    });
+  });
+}
+
+function animate() {
+  renderer.setAnimationLoop(render);
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
 </script>
 
 </body>
