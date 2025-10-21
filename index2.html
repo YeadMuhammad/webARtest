@@ -2,9 +2,8 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>AR.js NFT Example</title>
+    <title>AR.js NFT (Fixed)</title>
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <!-- Load stable Three.js + AR.js NFT build -->
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/three.js/build/ar-nft.js"></script>
     <style>
       body, html { margin:0; overflow:hidden; background:#000; }
@@ -16,17 +15,13 @@
     </style>
   </head>
   <body>
-    <div id="status">Status: waiting</div>
+    <div id="status">Waiting to start...</div>
     <button id="startBtn">Start Camera</button>
 
     <script>
       const statusDiv = document.getElementById('status');
       const startBtn = document.getElementById('startBtn');
-
-      startBtn.onclick = () => {
-        startBtn.style.display = 'none';
-        initAR();
-      };
+      startBtn.onclick = () => { startBtn.style.display = 'none'; initAR(); };
 
       function log(msg) {
         console.log(msg);
@@ -35,6 +30,7 @@
 
       function initAR() {
         log("Initializing AR.js NFT...");
+
         const scene = new THREE.Scene();
         const camera = new THREE.Camera();
         scene.add(camera);
@@ -46,14 +42,10 @@
         const light = new THREE.AmbientLight(0xffffff);
         scene.add(light);
 
-        // Load NFT marker data (old.* files must be in same folder)
         const arToolkitSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
+        arToolkitSource.init(() => setTimeout(onResize, 1000));
 
-        arToolkitSource.init(function onReady() {
-          setTimeout(() => onResize(), 1000);
-        });
-
-        window.addEventListener('resize', () => onResize());
+        window.addEventListener('resize', onResize);
         function onResize() {
           arToolkitSource.onResizeElement();
           arToolkitSource.copyElementSizeTo(renderer.domElement);
@@ -64,18 +56,19 @@
 
         const arToolkitContext = new THREEx.ArToolkitContext({
           detectionMode: 'mono',
-          cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/data/data/camera_para.dat'
+          cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/data/data/camera_para.dat',
+          wasmPath: './data/' // <--- this is the key fix!
         });
 
         arToolkitContext.init(() => {
           camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-          log("AR.js context initialized, loading NFT marker...");
+          log("AR.js context initialized — loading NFT marker...");
         });
 
         const markerRoot = new THREE.Group();
         scene.add(markerRoot);
 
-        const arMarkerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+        const markerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
           type: 'nft',
           descriptorsUrl: 'old'
         });
@@ -87,14 +80,10 @@
         mesh.rotation.x = -Math.PI / 2;
         markerRoot.add(mesh);
 
-        let lastTimeMsec = 0;
         requestAnimationFrame(function animate(nowMsec) {
           requestAnimationFrame(animate);
-          const deltaMsec = nowMsec - lastTimeMsec;
-          lastTimeMsec = nowMsec;
           if (arToolkitSource.ready) {
             arToolkitContext.update(arToolkitSource.domElement);
-            markerRoot.visible ? log("Marker visible") : log("Searching marker...");
           }
           renderer.render(scene, camera);
         });
