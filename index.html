@@ -2,15 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>QR AR Web App</title>
+  <title>QR AR Web App Debug</title>
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
     #video { display: none; }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: red;
+      font-family: monospace;
+      background: rgba(0,0,0,0.5);
+      padding: 5px;
+      z-index: 100;
+    }
   </style>
 </head>
 <body>
 
+<div id="status">Initializing...</div>
 <video id="video" autoplay></video>
 
 <script type="module">
@@ -21,32 +32,61 @@ let camera, scene, renderer;
 let spawnPlane;
 let video, videoCanvas, videoContext;
 let spawned = false;
+const statusDiv = document.getElementById('status');
 
-init();
+init().catch(err => {
+  console.error(err);
+  statusDiv.textContent = "Error during init: " + err;
+});
 animate();
 
 async function init() {
-  // --- Setup Three.js ---
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera();
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
+  statusDiv.textContent = "Setting up Three.js...";
+  try {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera();
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+  } catch(e) {
+    console.error(e);
+    statusDiv.textContent = "Three.js init error: " + e;
+    return;
+  }
 
-  // --- Load replacement image ---
-  const loader = new THREE.TextureLoader();
-  const texture = loader.load('assets/spawn.jpg');
+  statusDiv.textContent = "Loading spawn texture...";
+  try {
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load('assets/spawn.jpg',
+      () => { statusDiv.textContent = "Spawn texture loaded"; },
+      undefined,
+      err => { 
+        console.error(err);
+        statusDiv.textContent = "Texture load error: " + err; 
+      }
+    );
 
-  const geometry = new THREE.PlaneGeometry(0.4, 0.4); // adjust size in meters
-  const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
-  spawnPlane = new THREE.Mesh(geometry, material);
-  spawnPlane.visible = false; // hidden until QR is detected
-  scene.add(spawnPlane);
+    const geometry = new THREE.PlaneGeometry(0.4, 0.4);
+    const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+    spawnPlane = new THREE.Mesh(geometry, material);
+    spawnPlane.visible = false;
+    scene.add(spawnPlane);
+  } catch(e) {
+    console.error(e);
+    statusDiv.textContent = "Error creating spawn plane: " + e;
+  }
 
-  // --- Setup video feed ---
-  video = document.getElementById('video');
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-  video.srcObject = stream;
+  statusDiv.textContent = "Requesting camera...";
+  try {
+    video = document.getElementById('video');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    await video.play();
+    statusDiv.textContent = "Camera stream started";
+  } catch(e) {
+    console.error(e);
+    statusDiv.textContent = "Camera error: " + e;
+  }
 
   videoCanvas = document.createElement('canvas');
   videoContext = videoCanvas.getContext('2d');
@@ -54,38 +94,42 @@ async function init() {
 
 function animate() {
   requestAnimationFrame(animate);
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+  if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
     detectQR();
   }
   renderer.render(scene, camera);
 }
 
 function detectQR() {
-  // --- Draw video frame to hidden canvas ---
-  videoCanvas.width = video.videoWidth;
-  videoCanvas.height = video.videoHeight;
-  videoContext.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
+  try {
+    videoCanvas.width = video.videoWidth;
+    videoCanvas.height = video.videoHeight;
+    videoContext.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
 
-  const imageData = videoContext.getImageData(0, 0, videoCanvas.width, videoCanvas.height);
-  const code = jsQR(imageData.data, imageData.width, imageData.height);
+    const imageData = videoContext.getImageData(0, 0, videoCanvas.width, videoCanvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
 
-  if (code && !spawned) {
-    // QR detected first time
-    spawned = true;
-    spawnPlane.visible = true;
+    if (code && !spawned) {
+      spawned = true;
+      spawnPlane.visible = true;
 
-    // --- Compute center of QR in normalized device coordinates ---
-    const cx = (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2;
-    const cy = (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2;
+      const cx = (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2;
+      const cy = (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2;
 
-    // Convert 2D camera coords to Three.js 3D coordinates
-    const x = (cx / video.videoWidth) * 2 - 1;
-    const y = -((cy / video.videoHeight) * 2 - 1);
+      const x = (cx / video.videoWidth) * 2 - 1;
+      const y = -((cy / video.videoHeight) * 2 - 1);
 
-    const vector = new THREE.Vector3(x, y, -0.5); // place 0.5 units in front of camera
-    vector.unproject(camera);
-    spawnPlane.position.copy(vector);
-    spawnPlane.lookAt(camera.position); // optional: face camera
+      const vector = new THREE.Vector3(x, y, -0.5);
+      vector.unproject(camera);
+      spawnPlane.position.copy(vector);
+      spawnPlane.lookAt(camera.position);
+
+      statusDiv.textContent = "QR detected: " + code.data;
+      console.log("QR detected:", code);
+    }
+  } catch(e) {
+    console.error("detectQR error:", e);
+    statusDiv.textContent = "detectQR error: " + e;
   }
 }
 </script>
