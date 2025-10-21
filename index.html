@@ -1,97 +1,57 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NFT AR Replacement</title>
-
-  <!-- A-Frame -->
-  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
-  <!-- AR.js for NFT -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-
-  <style>
-    body { margin:0; overflow:hidden; font-family: Arial; }
-    #ui {
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      z-index: 10; background: rgba(0,0,0,0.5); padding: 8px 12px;
-      border-radius: 6px; color: white; font-size: 14px;
-    }
-    button { padding: 6px 10px; border-radius: 5px; border: none; cursor: pointer; }
-    #status { margin-top: 6px; }
-  </style>
-</head>
-<body>
-
+<body style="margin:0; overflow:hidden; font-family: Arial;">
 <div id="ui">
-  <button id="startBtn">Start Camera</button>
+  <button id="startBtn">Start AR</button>
   <div id="status">Idle</div>
 </div>
 
+<a-scene
+  embedded
+  vr-mode-ui="enabled: false"
+  arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+  id="scene"
+>
+  <a-nft
+    type="nft"
+    url="old"
+    smooth="true"
+    smoothCount="10"
+    smoothTolerance="0.01"
+    smoothThreshold="5"
+    id="marker"
+  >
+    <a-plane
+      rotation="-90 0 0"
+      width="1"
+      height="1"
+      material="src: url(new.jpg); side: double"
+      visible="false"
+      id="replacement"
+    ></a-plane>
+  </a-nft>
+
+  <a-entity camera></a-entity>
+</a-scene>
+
 <script>
 const startBtn = document.getElementById('startBtn');
-const statusBox = document.getElementById('status');
+const status = document.getElementById('status');
+const marker = document.getElementById('marker');
+const replacement = document.getElementById('replacement');
 
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  statusBox.innerText = 'Requesting camera permission...';
+startBtn.addEventListener('click', () => {
+  status.innerText = 'Initializing AR...';
 
-  try {
-    // Ensure user grants permission first
-    await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    statusBox.innerText = 'Camera permission granted. Initializing AR...';
+  // NFT events
+  marker.addEventListener('markerFound', () => {
+    replacement.setAttribute('visible', 'true');
+    status.innerText = 'Marker detected — replacement visible';
+  });
+  marker.addEventListener('markerLost', () => {
+    replacement.setAttribute('visible', 'false');
+    status.innerText = 'Marker lost';
+  });
 
-    // Dynamically create A-Frame scene
-    const scene = document.createElement('a-scene');
-    scene.setAttribute('embedded', '');
-    scene.setAttribute('vr-mode-ui', 'enabled: false');
-    scene.setAttribute('arjs', 'trackingMethod: best; sourceType: webcam; debugUIEnabled: false;');
-
-    // NFT marker
-    const nft = document.createElement('a-nft');
-    nft.setAttribute('type', 'nft');
-    nft.setAttribute('url', 'old'); // your NFT base name
-    nft.setAttribute('smooth', 'true');
-    nft.setAttribute('smoothCount', '10');
-    nft.setAttribute('smoothTolerance', '0.01');
-    nft.setAttribute('smoothThreshold', '5');
-
-    // Replacement plane
-    const plane = document.createElement('a-plane');
-    plane.setAttribute('rotation', '-90 0 0');
-    plane.setAttribute('position', '0 0 0');
-    plane.setAttribute('width', '1');
-    plane.setAttribute('height', '1');
-    plane.setAttribute('material', 'src: url(new.jpg); side: double');
-    plane.setAttribute('visible', 'false');
-
-    nft.appendChild(plane);
-    scene.appendChild(nft);
-
-    // Camera
-    const camera = document.createElement('a-entity');
-    camera.setAttribute('camera', '');
-    scene.appendChild(camera);
-
-    document.body.appendChild(scene);
-
-    // Handle marker events
-    nft.addEventListener('markerFound', () => {
-      plane.setAttribute('visible', 'true');
-      statusBox.innerText = 'Marker detected — replacement visible';
-    });
-    nft.addEventListener('markerLost', () => {
-      plane.setAttribute('visible', 'false');
-      statusBox.innerText = 'Marker lost';
-    });
-
-  } catch(err) {
-    console.error(err);
-    statusBox.innerText = 'Camera permission denied or error';
-    startBtn.disabled = false;
-  }
+  startBtn.style.display = 'none';
 });
 </script>
-
 </body>
-</html>
