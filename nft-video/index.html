@@ -18,12 +18,19 @@
           const marker = this.el;
           this.vid = document.querySelector("#vid");
 
+          // Try to play video on marker detection
           marker.addEventListener('markerFound', () => {
-            // Hide loader when marker is detected
+            // Hide loader
             document.querySelector('.arjs-loader').style.display = 'none';
-            // Ensure autoplay works
+
+            // Mobile browsers require muted autoplay
             this.vid.muted = true;
-            this.vid.play().catch(err => console.log('Video play failed:', err));
+
+            // Play video safely
+            const playPromise = this.vid.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(error => console.log("Video play failed:", error));
+            }
           });
 
           marker.addEventListener('markerLost', () => {
@@ -76,7 +83,6 @@
         preload="auto"
         loop
         muted
-        autoplay
         playsinline
         webkit-playsinline>
       </video>
