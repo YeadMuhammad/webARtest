@@ -1,149 +1,95 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>QR Poster Replacer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; background: black; }
-    #video {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      z-index: 1;
-    }
-    #canvas {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 2;
-    }
-    #status {
-      position: fixed;
-      top: 10px; left: 10px;
-      color: lime;
-      font-family: monospace;
-      background: rgba(0,0,0,0.6);
-      padding: 6px 10px;
-      border-radius: 5px;
-      z-index: 3;
-    }
-    #startBtn {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 18px;
-      background: lime;
-      color: black;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 8px;
-      cursor: pointer;
-      z-index: 4;
-    }
-  </style>
-</head>
-<body>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AR Poster Replacement (A-Frame + WebXR)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  </head>
+  <body style="margin: 0; overflow: hidden;">
+    <!-- AR scene -->
+    <a-scene
+      embedded
+      vr-mode-ui="enabled: false"
+      arjs="sourceType: webcam;"
+      webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay;"
+      renderer="colorManagement: true; physicallyCorrectLights;"
+    >
+      <a-assets>
+        <img id="newPoster" src="assets/spawn.jpg" />
+      </a-assets>
 
-<video id="video" autoplay playsinline muted></video>
-<canvas id="canvas"></canvas>
-<div id="status">Click Start to begin</div>
-<button id="startBtn">Start AR</button>
+      <!-- Light -->
+      <a-entity light="type: ambient; color: #fff"></a-entity>
 
-<!-- jsQR library -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+      <!-- The poster that will appear in world space -->
+      <a-plane
+        id="poster"
+        src="#newPoster"
+        width="1"
+        height="0.7"
+        visible="false"
+        position="0 0 -1"
+        rotation="-90 0 0"
+      ></a-plane>
 
-<script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const startBtn = document.getElementById("startBtn");
-const statusDiv = document.getElementById("status");
+      <!-- Camera -->
+      <a-entity camera look-controls></a-entity>
+    </a-scene>
 
-let posterImage = new Image();
-posterImage.src = "assets/spawn.jpg"; // your replacement image
-let qrDetected = false;
-let detectedQR = null;
-let posterReady = false;
+    <div id="overlay" style="
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: lime;
+        font-family: monospace;
+        background: rgba(0,0,0,0.6);
+        padding: 8px 12px;
+        border-radius: 6px;">
+      Point at QR to spawn poster
+    </div>
 
-posterImage.onload = () => {
-  posterReady = true;
-  console.log("Poster image loaded");
-};
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <script>
+      // We'll use jsQR to detect QR on the camera feed
+      const sceneEl = document.querySelector("a-scene");
+      const poster = document.getElementById("poster");
+      let detected = false;
 
-startBtn.addEventListener("click", async () => {
-  startBtn.style.display = "none";
-  statusDiv.textContent = "Requesting camera...";
+      // Wait until the scene is loaded
+      sceneEl.addEventListener("loaded", () => {
+        const video = sceneEl.systems.arjs?.video;
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    video.srcObject = stream;
-    await video.play();
-    statusDiv.textContent = "Camera started. Looking for QR...";
-    requestAnimationFrame(scanFrame);
-  } catch (err) {
-    console.error("Camera error:", err);
-    statusDiv.textContent = "Camera error: " + err.message;
-  }
-});
+        if (!video) {
+          console.warn("No video feed found from AR.js");
+          return;
+        }
 
-function scanFrame() {
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
+        function detectLoop() {
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
 
-    if (code && !qrDetected && posterReady) {
-      qrDetected = true;
-      detectedQR = code;
-      statusDiv.textContent = "QR detected! Replacing poster...";
-    }
-
-    if (qrDetected && posterReady) {
-      drawPoster(detectedQR);
-      statusDiv.textContent = "Poster replaced and locked!";
-    }
-
-    // Debug QR corners
-    if (code) {
-      drawLine(code.location.topLeftCorner, code.location.topRightCorner, "red");
-      drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "red");
-      drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "red");
-      drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "red");
-    }
-  }
-
-  requestAnimationFrame(scanFrame);
-}
-
-function drawLine(begin, end, color) {
-  ctx.beginPath();
-  ctx.moveTo(begin.x, begin.y);
-  ctx.lineTo(end.x, end.y);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = color;
-  ctx.stroke();
-}
-
-function drawPoster(code) {
-  const { topLeftCorner, bottomRightCorner } = code.location;
-  const width = bottomRightCorner.x - topLeftCorner.x;
-  const height = bottomRightCorner.y - topLeftCorner.y;
-
-  // draw camera frame
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  // draw replacement image on top of QR region
-  ctx.drawImage(posterImage, topLeftCorner.x, topLeftCorner.y, width, height);
-}
-</script>
-
-
-</body>
+            if (code && !detected) {
+              detected = true;
+              // Create an anchor in world space
+              const camera = sceneEl.camera.el;
+              const pos = camera.object3D.localToWorld(new THREE.Vector3(0, 0, -1));
+              poster.setAttribute("position", `${pos.x} ${pos.y} ${pos.z}`);
+              poster.setAttribute("visible", "true");
+              document.getElementById("overlay").innerText = "Poster anchored!";
+            }
+          }
+          requestAnimationFrame(detectLoop);
+        }
+        detectLoop();
+      });
+    </script>
+  </body>
 </html>
