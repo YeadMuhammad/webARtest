@@ -2,88 +2,91 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>WebXR Image AR</title>
+  <title>QR AR Web App</title>
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
+    #video { display: none; }
   </style>
 </head>
 <body>
 
+<video id="video" autoplay></video>
+
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js';
-import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/ARButton.js';
+import jsQR from 'https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js';
 
 let camera, scene, renderer;
-let reticle, spawnPlane;
-let xrSession, xrReferenceSpace, anchorCreated = false;
+let spawnPlane;
+let video, videoCanvas, videoContext;
+let spawned = false;
 
 init();
 animate();
 
 async function init() {
+  // --- Setup Three.js ---
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera();
-
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // ARButton to start WebXR session
-  document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['image-tracking', 'anchors', 'local-floor'] }));
+  // --- Load replacement image ---
+  const loader = new THREE.TextureLoader();
+  const texture = loader.load('assets/spawn.jpg');
 
-  // Load spawn image as texture
-  const textureLoader = new THREE.TextureLoader();
-  const spawnTexture = textureLoader.load('assets/spawn.jpg');
-
-  const planeGeometry = new THREE.PlaneGeometry(0.2, 0.2); // size in meters
-  const planeMaterial = new THREE.MeshBasicMaterial({ map: spawnTexture, side: THREE.DoubleSide });
-  spawnPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-  spawnPlane.visible = false; // hide until poster is detected
+  const geometry = new THREE.PlaneGeometry(0.4, 0.4); // adjust size in meters
+  const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+  spawnPlane = new THREE.Mesh(geometry, material);
+  spawnPlane.visible = false; // hidden until QR is detected
   scene.add(spawnPlane);
 
-  // Wait for session to start
-  renderer.xr.addEventListener('sessionstart', async () => {
-    xrSession = renderer.xr.getSession();
-    xrReferenceSpace = await xrSession.requestReferenceSpace('local-floor');
+  // --- Setup video feed ---
+  video = document.getElementById('video');
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  video.srcObject = stream;
 
-    // Load poster image for tracking
-    const img = await fetch('assets/poster.jpg').then(r => r.blob()).then(b => createImageBitmap(b));
-    await xrSession.updateTrackedImages([{ image: img, widthInMeters: 0.2 }]);
-
-    xrSession.addEventListener('trackedevent', async (event) => {
-      const imageIndex = event.index;
-      const imageState = event.result;
-
-      if (imageState.tracking && !anchorCreated) {
-        // Create anchor at the detected poster
-        const pose = event.getPose(xrReferenceSpace);
-        if (!pose) return;
-
-        const anchor = await xrSession.requestAnchor(pose.transform, xrReferenceSpace);
-        spawnPlane.visible = true;
-        anchor.context = spawnPlane;
-
-        anchor.addEventListener('update', (e) => {
-          // update spawnPlane to anchor transform
-          const t = e.anchor.transform;
-          spawnPlane.position.set(t.position.x, t.position.y, t.position.z);
-          spawnPlane.quaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
-        });
-
-        anchorCreated = true;
-      }
-    });
-  });
+  videoCanvas = document.createElement('canvas');
+  videoContext = videoCanvas.getContext('2d');
 }
 
 function animate() {
-  renderer.setAnimationLoop(render);
+  requestAnimationFrame(animate);
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    detectQR();
+  }
+  renderer.render(scene, camera);
 }
 
-function render() {
-  renderer.render(scene, camera);
+function detectQR() {
+  // --- Draw video frame to hidden canvas ---
+  videoCanvas.width = video.videoWidth;
+  videoCanvas.height = video.videoHeight;
+  videoContext.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
+
+  const imageData = videoContext.getImageData(0, 0, videoCanvas.width, videoCanvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+  if (code && !spawned) {
+    // QR detected first time
+    spawned = true;
+    spawnPlane.visible = true;
+
+    // --- Compute center of QR in normalized device coordinates ---
+    const cx = (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2;
+    const cy = (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2;
+
+    // Convert 2D camera coords to Three.js 3D coordinates
+    const x = (cx / video.videoWidth) * 2 - 1;
+    const y = -((cy / video.videoHeight) * 2 - 1);
+
+    const vector = new THREE.Vector3(x, y, -0.5); // place 0.5 units in front of camera
+    vector.unproject(camera);
+    spawnPlane.position.copy(vector);
+    spawnPlane.lookAt(camera.position); // optional: face camera
+  }
 }
 </script>
 
