@@ -16,20 +16,20 @@
       AFRAME.registerComponent('videohandler', {
         init: function () {
           const marker = this.el;
-          this.vid = document.querySelector("#vid");
+          const vid = document.querySelector("#vid");
 
-          this.vid.addEventListener('loadeddata', () => {
+          // Video ready debug
+          vid.addEventListener('loadeddata', () => {
             console.log("Video loaded and ready!");
           });
 
+          // When marker is detected
           marker.addEventListener('markerFound', () => {
             console.log("Marker detected!");
-            // Hide loader
             document.querySelector('.arjs-loader').style.display = 'none';
-            // Ensure autoplay works
-            this.vid.muted = true;
+            vid.muted = true;
 
-            const playPromise = this.vid.play();
+            const playPromise = vid.play();
             if (playPromise !== undefined) {
               playPromise
                 .then(() => console.log("Video playing"))
@@ -37,10 +37,11 @@
             }
           });
 
+          // When marker is lost
           marker.addEventListener('markerLost', () => {
             console.log("Marker lost");
-            this.vid.pause();
-            this.vid.currentTime = 0;
+            vid.pause();
+            vid.currentTime = 0;
           });
         }
       });
@@ -58,4 +59,63 @@
       background-color: rgba(0,0,0,0.8);
       z-index: 9999;
       display: flex;
-      justify-content: cent
+      justify-content: center;
+      align-items: center;
+    }
+    .arjs-loader div {
+      color: white;
+      font-size: 1.25em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loader -->
+  <div class="arjs-loader">
+    <div>Loading, please wait...</div>
+  </div>
+
+  <a-scene
+    vr-mode-ui="enabled: false"
+    embedded
+    renderer="antialias: true; alpha: true;"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;">
+
+    <!-- Video asset -->
+    <a-assets>
+      <video
+        id="vid"
+        src="mov_bbb.mp4"
+        preload="auto"
+        loop
+        muted
+        playsinline
+        webkit-playsinline>
+      </video>
+    </a-assets>
+
+    <!-- NFT marker -->
+    <a-nft
+      videohandler
+      type="nft"
+      url="https://raw.githubusercontent.com/YeadMuhammad/webARtest/main/nft-video/old"
+      smooth="true"
+      smoothCount="10"
+      smoothTolerance="0.01"
+      smoothThreshold="5">
+
+      <!-- Video displayed on the marker -->
+      <a-video
+        src="#vid"
+        position="0 0 0"
+        rotation="0 0 0"
+        width="1"
+        height="0.6">
+      </a-video>
+    </a-nft>
+
+    <!-- Camera -->
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
+</html>
