@@ -1,92 +1,53 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NFT AR Replacement</title>
-  <!-- A-Frame -->
-  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
-  <!-- AR.js for NFT -->
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar-nft.js"></script>
-  <style>
-    body { margin: 0; overflow: hidden; font-family: Arial; }
-    #ui {
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      z-index: 10; background: rgba(0,0,0,0.5); padding: 8px 12px;
-      border-radius: 6px; color: white; font-size: 14px;
-    }
-    button { padding: 6px 10px; border-radius: 5px; border: none; cursor: pointer; }
-    #status { margin-top: 6px; }
-  </style>
-</head>
-<body>
-  <div id="ui">
-    <button id="startBtn">Start Camera</button>
-    <div id="status">Idle</div>
-  </div>
+<script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1c2407b26c61958baa93967b5412487cd94b290b/dist/aframe-master.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
+<style>
+  .arjs-loader {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .arjs-loader div {
+    text-align: center;
+    font-size: 1.25em;
+    color: white;
+  }
+</style>
+
+<body style="margin : 0px; overflow: hidden;">
+  <!-- minimal loader shown until image descriptors are loaded -->
+  <div class="arjs-loader">
+    <div>Loading, please wait...</div>
+  </div>
   <a-scene
+    vr-mode-ui="enabled: false;"
+    renderer="logarithmicDepthBuffer: true;"
     embedded
-    vr-mode-ui="enabled: false"
-    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-    id="ar-scene"
+    arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;"
   >
-    <!-- NFT marker -->
     <a-nft
       type="nft"
-      url="old"
+      url="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/trex-image/trex"
       smooth="true"
       smoothCount="10"
-      smoothTolerance="0.01"
+      smoothTolerance=".01"
       smoothThreshold="5"
-      id="marker"
     >
-      <!-- Replacement image plane -->
-      <a-plane
-        id="replacement"
-        position="0 0 0"
-        rotation="-90 0 0"
-        width="1"
-        height="1"
-        visible="false"
-        material="src: url(new.jpg); side: double;"
-      ></a-plane>
+      <a-entity
+        gltf-model="https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/scene.gltf"
+        scale="5 5 5"
+        position="50 150 0"
+      >
+      </a-entity>
     </a-nft>
-
     <a-entity camera></a-entity>
   </a-scene>
-
-  <script>
-    const startBtn = document.getElementById('startBtn');
-    const statusBox = document.getElementById('status');
-    const marker = document.getElementById('marker');
-    const replacement = document.getElementById('replacement');
-
-    startBtn.addEventListener('click', async () => {
-      startBtn.disabled = true;
-      statusBox.innerText = 'Requesting camera permission...';
-
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        statusBox.innerText = 'Camera permission granted. AR initializing...';
-
-        // Show replacement when marker is found
-        marker.addEventListener('markerFound', () => {
-          replacement.setAttribute('visible', true);
-          statusBox.innerText = 'Marker detected — replacement visible';
-        });
-
-        marker.addEventListener('markerLost', () => {
-          replacement.setAttribute('visible', false);
-          statusBox.innerText = 'Marker lost';
-        });
-
-      } catch (err) {
-        console.error(err);
-        statusBox.innerText = 'Camera permission denied or error';
-        startBtn.disabled = false;
-      }
-    });
-  </script>
 </body>
-</html>
