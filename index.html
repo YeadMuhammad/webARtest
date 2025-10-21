@@ -1,32 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR NFT Replacement</title>
-<script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-<style>
-  body { margin:0; overflow:hidden; background:#000; }
-  #startBtn {
-    position:absolute;
-    top:50%; left:50%;
-    transform:translate(-50%, -50%);
-    z-index:999;
-    padding:12px 24px;
-    font-size:18px;
-    cursor:pointer;
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFT AR Replacement</title>
+
+  <!-- A-Frame -->
+  <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
+  <!-- AR.js for NFT -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #ui {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 10; background: rgba(0,0,0,0.5); padding: 8px 12px;
+      border-radius: 6px; color: white; font-family: Arial; font-size: 14px;
+    }
+    button { padding: 6px 10px; border-radius: 5px; border: none; cursor: pointer; }
+    #status { margin-top: 6px; }
+  </style>
 </head>
 <body>
-<button id="startBtn">Start AR</button>
 
-<a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true;"
-         arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" id="scene">
-  
-  <a-nft type="nft" url="old" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5" id="nftMarker">
-    <a-plane id="replacementPlane" src="new.jpg" rotation="-90 0 0" width="2" height="2" visible="false"></a-plane>
+<div id="ui">
+  <button id="startBtn">Start Camera</button>
+  <div id="status">Idle</div>
+</div>
+
+<a-scene
+    vr-mode-ui="enabled: false;"
+    embedded
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+    id="ar-scene"
+>
+  <!-- NFT marker -->
+  <a-nft
+      type="nft"
+      url="old"
+      smooth="true"
+      smoothCount="10"
+      smoothTolerance="0.01"
+      smoothThreshold="5"
+      id="marker"
+  >
+    <!-- Replacement image plane -->
+    <a-plane
+        id="replacement"
+        position="0 0 0"
+        rotation="-90 0 0"
+        width="1"
+        height="1"
+        visible="false"
+        material="src: url(new.jpg); side: double;"
+    ></a-plane>
   </a-nft>
 
   <a-entity camera></a-entity>
@@ -34,17 +61,37 @@
 
 <script>
 const startBtn = document.getElementById('startBtn');
-const plane = document.getElementById('replacementPlane');
-const marker = document.getElementById('nftMarker');
+const statusBox = document.getElementById('status');
+const arScene = document.getElementById('ar-scene');
+const marker = document.getElementById('marker');
+const replacement = document.getElementById('replacement');
 
-startBtn.addEventListener('click', () => {
-  startBtn.style.display = 'none';
-  // AR.js automatically requests camera when the scene is already in the DOM
-  plane.setAttribute('visible', false);
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  statusBox.innerText = 'Requesting camera permission...';
+  
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    statusBox.innerText = 'Camera permission granted. AR initializing...';
 
-  marker.addEventListener('markerFound', () => plane.setAttribute('visible', true));
-  marker.addEventListener('markerLost', () => plane.setAttribute('visible', false));
+    // Show replacement when marker is found
+    marker.addEventListener('markerFound', () => {
+      replacement.setAttribute('visible', true);
+      statusBox.innerText = 'Marker detected — replacement visible';
+    });
+
+    marker.addEventListener('markerLost', () => {
+      replacement.setAttribute('visible', false);
+      statusBox.innerText = 'Marker lost';
+    });
+
+  } catch (err) {
+    console.error(err);
+    statusBox.innerText = 'Camera permission denied or error';
+    startBtn.disabled = false;
+  }
 });
 </script>
+
 </body>
 </html>
