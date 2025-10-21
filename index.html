@@ -7,78 +7,64 @@
 
   <!-- A-Frame -->
   <script src="https://cdn.jsdelivr.net/gh/aframevr/aframe@1.4.2/dist/aframe.min.js"></script>
-  <!-- AR.js for NFT -->
+  <!-- AR.js NFT build with WASM included -->
   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
   <style>
     body { margin:0; overflow:hidden; font-family: Arial; }
-    .arjs-loader {
-      height: 100%;
-      width: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
-      background-color: rgba(0,0,0,0.8);
-      z-index: 9999;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .arjs-loader div {
-      text-align: center;
-      font-size: 1.25em;
-      color: white;
+    #status { position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      z-index: 10; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius:6px; color:white;
     }
   </style>
 </head>
 <body>
 
-  <!-- Loader until NFT is ready -->
-  <div class="arjs-loader" id="loader">
-    <div>Loading AR, please wait...</div>
-  </div>
+<div id="status">Idle</div>
 
-  <a-scene
-    vr-mode-ui="enabled: false"
-    renderer="logarithmicDepthBuffer: true"
+<a-scene
+    vr-mode-ui="enabled: false;"
     embedded
     arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-    id="ar-scene"
-  >
-    <!-- Your local NFT marker -->
-    <a-nft
+>
+  <!-- Local NFT marker -->
+  <a-nft
       type="nft"
-      url="old"  <!-- replace 'old' with your NFT base name -->
+      url="old"   <!-- your NFT basename -->
       smooth="true"
       smoothCount="10"
-      smoothTolerance=".01"
+      smoothTolerance="0.01"
       smoothThreshold="5"
       id="marker"
-    >
-      <!-- Replacement image -->
-      <a-plane
-        src="new.jpg"  <!-- your replacement image in the same folder -->
+  >
+    <!-- Replacement image -->
+    <a-plane
+        src="new.jpg"
+        rotation="-90 0 0"
         width="1"
         height="1"
-        position="0 0 0"
-        rotation="-90 0 0"
-        visible="true"
-      ></a-plane>
-    </a-nft>
+        visible="false"
+        id="replacement"
+    ></a-plane>
+  </a-nft>
 
-    <!-- Camera -->
-    <a-entity camera></a-entity>
-  </a-scene>
+  <a-entity camera></a-entity>
+</a-scene>
 
-  <script>
-    // Hide loader when AR is ready
-    const loader = document.getElementById('loader');
-    const marker = document.getElementById('marker');
+<script>
+const marker = document.getElementById('marker');
+const replacement = document.getElementById('replacement');
+const status = document.getElementById('status');
 
-    marker.addEventListener('markerFound', () => {
-      loader.style.display = 'none';
-    });
-  </script>
+marker.addEventListener('markerFound', () => {
+  replacement.setAttribute('visible', true);
+  status.innerText = 'Marker detected — replacement visible';
+});
+
+marker.addEventListener('markerLost', () => {
+  replacement.setAttribute('visible', false);
+  status.innerText = 'Marker lost';
+});
+</script>
 
 </body>
 </html>
