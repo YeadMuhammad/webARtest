@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>WebAR NFT Video</title>
 
-  <!-- Stable A-Frame -->
+  <!-- A-Frame 1.6.0 -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
 
   <!-- AR.js NFT -->
@@ -19,9 +19,9 @@
           this.vid = document.querySelector("#vid");
 
           marker.addEventListener('markerFound', () => {
-            // Hide loader
+            // Hide loader when marker is detected
             document.querySelector('.arjs-loader').style.display = 'none';
-            // Ensure video autoplay works
+            // Ensure autoplay works
             this.vid.muted = true;
             this.vid.play().catch(err => console.log('Video play failed:', err));
           });
@@ -36,10 +36,7 @@
   </script>
 
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
+    body { margin: 0; overflow: hidden; }
     .arjs-loader {
       height: 100%;
       width: 100%;
@@ -79,6 +76,7 @@
         preload="auto"
         loop
         muted
+        autoplay
         playsinline
         webkit-playsinline>
       </video>
