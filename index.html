@@ -34,7 +34,7 @@
 <body>
 
   <!-- Loader until NFT is ready -->
-  <div class="arjs-loader">
+  <div class="arjs-loader" id="loader">
     <div>Loading AR, please wait...</div>
   </div>
 
@@ -69,6 +69,16 @@
     <!-- Camera -->
     <a-entity camera></a-entity>
   </a-scene>
+
+  <script>
+    // Hide loader when AR is ready
+    const loader = document.getElementById('loader');
+    const marker = document.getElementById('marker');
+
+    marker.addEventListener('markerFound', () => {
+      loader.style.display = 'none';
+    });
+  </script>
 
 </body>
 </html>
