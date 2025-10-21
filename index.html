@@ -64,9 +64,15 @@ const startBtn = document.getElementById("startBtn");
 const statusDiv = document.getElementById("status");
 
 let posterImage = new Image();
-posterImage.src = "assets/spawn.jpg";  // your replacement image
+posterImage.src = "assets/spawn.jpg"; // your replacement image
 let qrDetected = false;
 let detectedQR = null;
+let posterReady = false;
+
+posterImage.onload = () => {
+  posterReady = true;
+  console.log("Poster image loaded");
+};
 
 startBtn.addEventListener("click", async () => {
   startBtn.style.display = "none";
@@ -75,7 +81,7 @@ startBtn.addEventListener("click", async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     video.srcObject = stream;
-    video.play();
+    await video.play();
     statusDiv.textContent = "Camera started. Looking for QR...";
     requestAnimationFrame(scanFrame);
   } catch (err) {
@@ -88,19 +94,23 @@ function scanFrame() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(imageData.data, imageData.width, imageData.height);
 
-    if (code && !qrDetected) {
+    if (code && !qrDetected && posterReady) {
       qrDetected = true;
       detectedQR = code;
       statusDiv.textContent = "QR detected! Replacing poster...";
-      placePoster(code);
     }
 
-    // draw QR corners for debugging
+    if (qrDetected && posterReady) {
+      drawPoster(detectedQR);
+      statusDiv.textContent = "Poster replaced and locked!";
+    }
+
+    // Debug QR corners
     if (code) {
       drawLine(code.location.topLeftCorner, code.location.topRightCorner, "red");
       drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "red");
@@ -108,6 +118,7 @@ function scanFrame() {
       drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "red");
     }
   }
+
   requestAnimationFrame(scanFrame);
 }
 
@@ -120,18 +131,19 @@ function drawLine(begin, end, color) {
   ctx.stroke();
 }
 
-function placePoster(code) {
+function drawPoster(code) {
   const { topLeftCorner, bottomRightCorner } = code.location;
   const width = bottomRightCorner.x - topLeftCorner.x;
   const height = bottomRightCorner.y - topLeftCorner.y;
 
-  // clear old poster before drawing new one
+  // draw camera frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  ctx.drawImage(posterImage, topLeftCorner.x, topLeftCorner.y, width, height);
 
-  statusDiv.textContent = "Poster replaced!";
+  // draw replacement image on top of QR region
+  ctx.drawImage(posterImage, topLeftCorner.x, topLeftCorner.y, width, height);
 }
 </script>
+
 
 </body>
 </html>
