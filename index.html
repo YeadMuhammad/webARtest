@@ -1,31 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Hybrid AR.js + WebXR Debug</title>
-<style>
-html,body { height:100%; margin:0; background:#000; overflow:hidden; }
-#ui { position:fixed; bottom:12px; left:12px; right:12px; z-index:10; display:flex; gap:8px; }
-.panel { background:rgba(0,0,0,0.6); color:#fff; padding:10px; border-radius:8px; font-family:sans-serif; }
-button { padding:8px 12px; border-radius:6px; border:none; background:#1e88e5; color:#fff; cursor:pointer; }
-#status { min-width:220px; }
-canvas { width:100%; height:100%; display:block; }
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hybrid AR.js + WebXR Anchor</title>
 <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.2/aframe/build/aframe-ar.min.js"></script>
+<style>
+html,body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
+#ui { position:fixed; bottom:10px; left:10px; z-index:100; display:flex; gap:8px; }
+.panel { background:rgba(0,0,0,0.6); color:#fff; padding:8px; border-radius:6px; font-family:sans-serif; min-width:220px; }
+button { padding:6px 12px; border:none; border-radius:6px; background:#1e88e5; color:#fff; cursor:pointer; }
+</style>
 </head>
 <body>
+
 <div id="ui">
-  <div class="panel" id="status">Status: waiting...</div>
+  <div class="panel" id="status">Camera not started.</div>
   <div class="panel"><button id="startCameraBtn">Start Camera</button></div>
-  <div class="panel"><button id="startWebXRBtn">Start WebXR (anchors)</button></div>
+  <div class="panel"><button id="startWebXRBtn" disabled>Start WebXR (Anchors)</button></div>
 </div>
 
-<a-scene embedded arjs="sourceType:webcam; autoStart:false; debugUIEnabled:true;" vr-mode-ui="enabled: false">
-  <!-- Marker -->
+<a-scene id="scene" embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false; autoStart: false;">
   <a-marker id="marker" type="pattern" url="pattern-qr.patt">
-    <a-entity id="markerModel" position="0 0 0" rotation="0 0 0">
+    <a-entity id="markerModel" position="0 0 0">
       <a-box position="0 0.5 0" depth="0.02" height="0.4" width="0.4" color="orange" opacity="0.8"></a-box>
     </a-entity>
   </a-marker>
@@ -36,109 +34,117 @@ canvas { width:100%; height:100%; display:block; }
 const statusEl = document.getElementById('status');
 const startCameraBtn = document.getElementById('startCameraBtn');
 const startWebXRBtn = document.getElementById('startWebXRBtn');
-const sceneEl = document.querySelector('a-scene');
+const sceneEl = document.getElementById('scene');
 const markerEl = document.getElementById('marker');
 const markerModel = document.getElementById('markerModel');
 
 let xrSession = null;
 let xrRefSpace = null;
 let anchor = null;
+let anchorCreated = false;
 let markerVisible = false;
 
-// Debug marker events
+// -------------------- CAMERA START --------------------
+startCameraBtn.addEventListener('click', () => {
+  statusEl.textContent = 'Starting camera...';
+  sceneEl.components['arjs'].start();
+  statusEl.textContent = 'Camera started! Waiting for marker detection.';
+  startCameraBtn.disabled = true;
+});
+
+// -------------------- MARKER VISIBILITY --------------------
 markerEl.addEventListener('markerFound', () => {
   markerVisible = true;
-  statusEl.textContent = 'Marker detected!';
+  statusEl.textContent = 'Marker found! You can now start WebXR.';
+  startWebXRBtn.disabled = false;
 });
+
 markerEl.addEventListener('markerLost', () => {
   markerVisible = false;
-  statusEl.textContent = 'Marker lost.';
+  if (!anchorCreated) statusEl.textContent = 'Marker lost (no anchor yet). Move camera to re-detect.';
 });
 
-// ---------------------------
-// CAMERA INITIALIZATION ONLY
-// ---------------------------
-startCameraBtn.addEventListener('click', () => {
-  statusEl.textContent = 'Initializing camera...';
-  const arSource = sceneEl.components['arjs'].arSource;
-
-  arSource.init(() => {
-    statusEl.textContent = 'Camera initialized successfully!';
-    // Resize renderer
-    sceneEl.components['arjs'].arSystem.copyElementSizeToRenderer();
-    sceneEl.renderer.setSize(arSource.domElement.width, arSource.domElement.height);
-  });
-
-  // Camera error handling
-  arSource.domElement.onerror = (e) => {
-    statusEl.textContent = 'Camera failed: ' + e;
-    console.error('Camera error:', e);
-  };
-});
-
-// ---------------------------
-// WEBXR SESSION (optional)
-// ---------------------------
+// -------------------- WEBXR ANCHOR --------------------
 startWebXRBtn.addEventListener('click', async () => {
   startWebXRBtn.disabled = true;
   statusEl.textContent = 'Requesting WebXR session...';
 
   if (!navigator.xr) {
-    statusEl.textContent = 'WebXR not supported. Using AR.js only.';
+    statusEl.textContent = 'WebXR not available — fallback to marker only.';
     return;
   }
 
   try {
     xrSession = await navigator.xr.requestSession('immersive-ar', {
-      optionalFeatures: ['local-floor','anchors','hit-test','dom-overlay'],
+      optionalFeatures: ['local-floor', 'anchors', 'hit-test', 'dom-overlay'],
       domOverlay: { root: document.body }
     });
   } catch (err) {
-    console.warn('WebXR request failed:', err);
-    statusEl.textContent = 'WebXR failed: ' + (err.message || err);
+    console.error('WebXR requestSession failed:', err);
+    statusEl.textContent = 'WebXR session failed. Using marker-only.';
     return;
   }
 
-  statusEl.textContent = 'WebXR session started!';
-  const gl = sceneEl.renderer.getContext();
+  statusEl.textContent = 'WebXR session started. Waiting for marker & XR frame to create anchor.';
+
+  // Create WebGL context compatible with XR
+  const rendererCanvas = document.querySelector('canvas');
+  const gl = rendererCanvas.getContext('webgl', { xrCompatible: true });
   await gl.makeXRCompatible();
   xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl) });
   xrRefSpace = await xrSession.requestReferenceSpace('local');
 
   xrSession.requestAnimationFrame(onXRFrame);
+
+  xrSession.addEventListener('end', () => {
+    statusEl.textContent = 'WebXR session ended.';
+    xrSession = null;
+    anchor = null;
+    anchorCreated = false;
+  });
 });
 
-// Simple XR frame loop for anchors (just demo)
-function onXRFrame(time, xrFrame) {
-  const session = xrFrame.session;
-  session.requestAnimationFrame(onXRFrame);
+// -------------------- XR FRAME --------------------
+async function onXRFrame(time, xrFrame) {
+  xrSession.requestAnimationFrame(onXRFrame);
 
-  // Check if marker is visible
-  if (!markerVisible) return;
+  if (!markerVisible || !xrFrame || anchorCreated) return;
 
-  // Anchor creation demo (if supported)
-  if (!anchor && xrFrame.createAnchor) {
-    const pos = markerModel.object3D.position;
-    const quat = markerModel.object3D.quaternion;
-    const xrTransform = new XRRigidTransform({ x: pos.x, y: pos.y, z: pos.z }, { x: quat.x, y: quat.y, z: quat.z, w: quat.w });
+  try {
+    // Get marker world matrix from A-Frame
+    const m = markerModel.object3D.matrixWorld.clone();
+    const { pos, quat } = matrixToPosQuat(m);
 
-    xrFrame.createAnchor(xrTransform, xrRefSpace).then(a => {
-      anchor = a;
-      statusEl.textContent = 'Anchor created! Object is world-locked.';
-    }).catch(e => {
-      console.warn('Anchor creation failed:', e);
-      statusEl.textContent = 'Anchor failed, still using marker.';
-    });
+    // Convert to XR space
+    const xrTransform = new XRRigidTransform({ x: pos.x, y: pos.y, z: pos.z },
+                                             { x: quat.x, y: quat.y, z: quat.z, w: quat.w });
+
+    if (typeof xrFrame.createAnchor === 'function') {
+      anchor = await xrFrame.createAnchor(xrTransform, xrRefSpace);
+      anchorCreated = true;
+      statusEl.textContent = 'Anchor created! Object is now world-locked.';
+    } else {
+      statusEl.textContent = 'Anchor API not available. Marker-only rendering.';
+    }
+  } catch (err) {
+    console.warn('XR anchor creation error:', err);
   }
 }
 
-// Safety: end XR session if page hidden
+// -------------------- UTILITY --------------------
+function matrixToPosQuat(m) {
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  m.decompose(pos, quat, scale);
+  return { pos, quat };
+}
+
+// -------------------- VISIBILITY SAFETY --------------------
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && xrSession) {
-    xrSession.end();
-    xrSession = null;
-  }
+  if (document.visibilityState === 'hidden' && xrSession) xrSession.end();
 });
 </script>
+
 </body>
 </html>
