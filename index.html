@@ -16,8 +16,8 @@ button { padding:6px 12px; border:none; border-radius:6px; background:#1e88e5; c
 <body>
 
 <div id="ui">
-  <div class="panel" id="status">Camera not started.</div>
-  <div class="panel"><button id="startCameraBtn">Start Camera</button></div>
+  <div class="panel" id="status">Scene loading...</div>
+  <div class="panel"><button id="startCameraBtn" disabled>Start Camera</button></div>
   <div class="panel"><button id="startWebXRBtn" disabled>Start WebXR (Anchors)</button></div>
 </div>
 
@@ -44,12 +44,24 @@ let anchor = null;
 let anchorCreated = false;
 let markerVisible = false;
 
+// -------------------- WAIT FOR SCENE --------------------
+sceneEl.addEventListener('loaded', () => {
+  statusEl.textContent = 'Scene loaded. Click Start Camera to begin.';
+  startCameraBtn.disabled = false;
+});
+
 // -------------------- CAMERA START --------------------
-startCameraBtn.addEventListener('click', () => {
+startCameraBtn.addEventListener('click', async () => {
   statusEl.textContent = 'Starting camera...';
-  sceneEl.components['arjs'].start();
-  statusEl.textContent = 'Camera started! Waiting for marker detection.';
-  startCameraBtn.disabled = true;
+
+  try {
+    await sceneEl.components.arjs.start();  // <-- important: wait for camera start
+    statusEl.textContent = 'Camera started. Waiting for marker detection.';
+    startCameraBtn.disabled = true;
+  } catch (err) {
+    console.error('Camera failed to start:', err);
+    statusEl.textContent = 'Camera failed to start. Check console for errors.';
+  }
 });
 
 // -------------------- MARKER VISIBILITY --------------------
@@ -87,13 +99,11 @@ startWebXRBtn.addEventListener('click', async () => {
 
   statusEl.textContent = 'WebXR session started. Waiting for marker & XR frame to create anchor.';
 
-  // Create WebGL context compatible with XR
   const rendererCanvas = document.querySelector('canvas');
   const gl = rendererCanvas.getContext('webgl', { xrCompatible: true });
   await gl.makeXRCompatible();
   xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl) });
   xrRefSpace = await xrSession.requestReferenceSpace('local');
-
   xrSession.requestAnimationFrame(onXRFrame);
 
   xrSession.addEventListener('end', () => {
@@ -111,13 +121,13 @@ async function onXRFrame(time, xrFrame) {
   if (!markerVisible || !xrFrame || anchorCreated) return;
 
   try {
-    // Get marker world matrix from A-Frame
     const m = markerModel.object3D.matrixWorld.clone();
     const { pos, quat } = matrixToPosQuat(m);
 
-    // Convert to XR space
-    const xrTransform = new XRRigidTransform({ x: pos.x, y: pos.y, z: pos.z },
-                                             { x: quat.x, y: quat.y, z: quat.z, w: quat.w });
+    const xrTransform = new XRRigidTransform(
+      { x: pos.x, y: pos.y, z: pos.z },
+      { x: quat.x, y: quat.y, z: quat.z, w: quat.w }
+    );
 
     if (typeof xrFrame.createAnchor === 'function') {
       anchor = await xrFrame.createAnchor(xrTransform, xrRefSpace);
