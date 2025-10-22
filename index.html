@@ -1,203 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hybrid WebXR + AR.js (Fixed Camera Init)</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR.js Marker Debug</title>
+
   <style>
-    html, body { height: 100%; margin: 0; background: #000; overflow: hidden; }
-    #ui {
-      position: fixed; bottom: 12px; left: 12px; right: 12px;
-      z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
-    }
-    .panel {
-      background: rgba(0,0,0,0.6); color: #0f0; padding: 10px;
-      border-radius: 8px; font-family: monospace; font-size: 14px;
-    }
-    button {
-      padding: 8px 14px; border-radius: 6px; border: none;
-      background: #1e88e5; color: #fff; cursor: pointer; font-size: 14px;
-    }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    canvas { width: 100%; height: 100%; display: block; }
+    html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+    #status { position:fixed; top:10px; left:10px; color:#0f0; font-family:monospace; background:rgba(0,0,0,0.5); padding:10px; border-radius:8px; z-index:100; }
+    #startBtn { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:10px 20px; font-size:16px; border:none; border-radius:8px; background:#1e88e5; color:#fff; cursor:pointer; z-index:100; }
   </style>
 
+  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <!-- AR.js for A-Frame -->
   <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.2/aframe/build/aframe-ar.min.js"></script>
+  <!-- THREEx ArToolkit (required for THREEx namespace) -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-threex.js"></script>
 </head>
 
 <body>
-  <div id="ui">
-    <div class="panel" id="status">Press "Start Camera" to begin AR</div>
-    <button id="startCamera">🎥 Start Camera</button>
-    <button id="startWebXR" disabled>🪐 Start WebXR (Anchor Lock)</button>
-  </div>
+<div id="status">Press "Start AR" to begin</div>
+<button id="startBtn">Start AR</button>
 
-  <!-- Scene will be injected later -->
-  <div id="sceneContainer"></div>
+<script>
+const statusEl = document.getElementById('status');
+const startBtn = document.getElementById('startBtn');
 
-  <script>
-  const statusEl = document.getElementById('status');
-  const startCamBtn = document.getElementById('startCamera');
-  const startXRBtn = document.getElementById('startWebXR');
-  const sceneContainer = document.getElementById('sceneContainer');
+let arSource, arContext, scene, camera, markerRoot;
 
-  let sceneInitialized = false;
-  let xrSession = null;
-  let xrRefSpace = null;
-  let anchor = null;
-  let anchorCreated = false;
-  let markerVisible = false;
-  let markerModel;
+startBtn.addEventListener('click', () => {
+    startBtn.disabled = true;
+    statusEl.textContent = "Requesting camera access...";
+    initAR();
+});
 
-  // ✅ Step 1: Ask for camera permission manually
-  startCamBtn.addEventListener('click', async () => {
-    try {
-      statusEl.textContent = 'Requesting camera access...';
-      await navigator.mediaDevices.getUserMedia({ video: true });
-      console.log("✅ Camera permission granted.");
-      startCamBtn.disabled = true;
-      initARScene();
-    } catch (err) {
-      console.error("❌ Camera access denied:", err);
-      statusEl.textContent = 'Camera access denied.';
-    }
-  });
+function initAR() {
+    // Create A-Frame scene
+    scene = document.createElement('a-scene');
+    scene.setAttribute('embedded','');
+    scene.setAttribute('vr-mode-ui','enabled: false');
+    scene.setAttribute('arjs','trackingMethod: best; sourceType: webcam; debugUIEnabled: true;');
+    document.body.appendChild(scene);
 
-  // ✅ Step 2: Initialize AR.js scene only after permission
-  function initARScene() {
-    if (sceneInitialized) return;
-    sceneInitialized = true;
+    camera = document.createElement('a-entity');
+    camera.setAttribute('camera','');
+    scene.appendChild(camera);
 
-    statusEl.textContent = 'Initializing AR scene...';
+    // Marker root
+    markerRoot = document.createElement('a-marker');
+    markerRoot.setAttribute('type','pattern');
+    markerRoot.setAttribute('url','patternqr.patt'); // Put your pattern here
+    markerRoot.setAttribute('emitevents','true');
+    scene.appendChild(markerRoot);
 
-    sceneContainer.innerHTML = `
-      <a-scene
-        embedded
-        vr-mode-ui="enabled: false"
-        arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: true;">
-        
-        <a-marker id="marker" type="pattern" url="patternqr.patt">
-          <a-plane id="markerModel"
-            src="new.jpg"
-            width="0.25" height="0.25"
-            position="0 0 0"
-            rotation="-90 0 0">
-          </a-plane>
-        </a-marker>
+    const box = document.createElement('a-box');
+    box.setAttribute('position','0 0.125 0');
+    box.setAttribute('rotation','0 45 0');
+    box.setAttribute('color','#4CC9F0');
+    box.setAttribute('shadow','true');
+    markerRoot.appendChild(box);
 
-        <a-entity camera id="camera"></a-entity>
-      </a-scene>
-    `;
-
-    const markerEl = document.getElementById('marker');
-    markerModel = document.getElementById('markerModel');
-
-    markerEl.addEventListener('markerFound', () => {
-      markerVisible = true;
-      statusEl.textContent = 'Marker found! Tap "Start WebXR" to world-lock.';
-      startXRBtn.disabled = false;
+    // THREEx ArToolkitSource
+    arSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
+    arSource.init(() => {
+        console.log('✅ arSource initialized');
+        statusEl.textContent = "Camera ready. Point at your QR marker.";
+        onResize();
     });
 
-    markerEl.addEventListener('markerLost', () => {
-      markerVisible = false;
-      if (!anchorCreated) statusEl.textContent = 'Marker lost — reacquire marker.';
+    window.addEventListener('resize', () => onResize());
+
+    // THREEx ArToolkitContext
+    arContext = new THREEx.ArToolkitContext({
+        cameraParametersUrl: 'https://rawcdn.githack.com/AR-js-org/AR.js/master/aframe/data/camera_para.dat',
+
+        detectionMode: 'mono',
+        debug: true
     });
 
-    statusEl.textContent = 'Camera started — point at your QR marker!';
-  }
+    arContext.init(() => {
+        console.log('✅ arContext initialized');
+        camera.object3D.projectionMatrix.copy(arContext.getProjectionMatrix());
+    });
 
-  // ✅ Step 3: WebXR session (same as before)
-  startXRBtn.addEventListener('click', async () => {
-    startXRBtn.disabled = true;
-    statusEl.textContent = 'Requesting WebXR session...';
+    // Marker events
+    markerRoot.addEventListener('markerFound', () => {
+        console.log('🎯 Marker detected!');
+        statusEl.textContent = "Marker detected ✅";
+    });
+    markerRoot.addEventListener('markerLost', () => {
+        console.log('❌ Marker lost');
+        statusEl.textContent = "Marker lost ❌";
+    });
 
-    if (!navigator.xr) {
-      statusEl.textContent = 'WebXR not supported — using marker only.';
-      return;
-    }
-
-    const supported = await navigator.xr.isSessionSupported('immersive-ar');
-    if (!supported) {
-      statusEl.textContent = 'immersive-ar not supported on this browser/device.';
-      return;
-    }
-
-    const sessionInit = {
-      optionalFeatures: ['local-floor', 'anchors', 'hit-test', 'dom-overlay'],
-      domOverlay: { root: document.body }
+    // Render loop
+    const render = function() {
+        requestAnimationFrame(render);
+        if(arSource.ready === false) return;
+        arContext.update(arSource.domElement);
     };
+    render();
+}
 
-    try {
-      xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
-    } catch (err) {
-      console.warn('Failed to start XR:', err);
-      statusEl.textContent = 'Failed to start WebXR — using marker fallback.';
-      return;
+function onResize(){
+    if(arSource && arSource.domElement){
+        arSource.onResizeElement();
+        arSource.copyElementSizeTo(scene);
+        if(arContext && arContext.arController){
+            arSource.copyElementSizeTo(arContext.arController.canvas);
+        }
     }
-
-    const canvas = document.querySelector('canvas');
-    const gl = canvas.getContext('webgl', { xrCompatible: true });
-    await gl.makeXRCompatible();
-
-    const xrGlLayer = new XRWebGLLayer(xrSession, gl);
-    xrSession.updateRenderState({ baseLayer: xrGlLayer });
-    xrRefSpace = await xrSession.requestReferenceSpace('local');
-
-    xrSession.addEventListener('end', () => {
-      anchorCreated = false;
-      anchor = null;
-      xrSession = null;
-      statusEl.textContent = 'WebXR session ended.';
-      startXRBtn.disabled = false;
-    });
-
-    xrSession.requestAnimationFrame(onXRFrame);
-    statusEl.textContent = 'WebXR started — waiting for marker.';
-  });
-
-  // Helper
-  function matrixToPosQuat(m) {
-    const pos = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    m.decompose(pos, quat, scale);
-    return { pos, quat };
-  }
-
-  // ✅ WebXR frame loop
-  async function onXRFrame(t, xrFrame) {
-    xrSession.requestAnimationFrame(onXRFrame);
-    const pose = xrFrame.getViewerPose(xrRefSpace);
-    if (!pose) return;
-
-    if (markerVisible && !anchorCreated && xrFrame.createAnchor) {
-      try {
-        markerModel.object3D.updateMatrixWorld(true);
-        const { pos, quat } = matrixToPosQuat(markerModel.object3D.matrixWorld);
-        const transform = new XRRigidTransform(pos, quat);
-        anchor = await xrFrame.createAnchor(transform, xrRefSpace);
-        anchorCreated = true;
-        statusEl.textContent = '✅ Anchor created — world-locked!';
-      } catch (e) {
-        console.warn('Anchor creation failed:', e);
-        statusEl.textContent = '⚠️ Anchors unavailable — using marker fallback.';
-      }
-    }
-
-    if (anchorCreated && anchor) {
-      const anchorPose = xrFrame.getPose(anchor.anchorSpace, xrRefSpace);
-      if (anchorPose) {
-        const p = anchorPose.transform.position;
-        const o = anchorPose.transform.orientation;
-        markerModel.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
-        const q = new THREE.Quaternion(o.x, o.y, o.z, o.w);
-        const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
-        const deg = r => (r * 180) / Math.PI;
-        markerModel.setAttribute('rotation', `${deg(e.x)} ${deg(e.y)} ${deg(e.z)}`);
-      }
-    }
-  }
-  </script>
+}
+</script>
 </body>
 </html>
