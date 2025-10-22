@@ -3,114 +3,113 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hybrid Image→WebXR Anchor (Marker to World Lock)</title>
+  <title>Hybrid WebXR + AR.js (Fixed Camera Init)</title>
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #000;
-      overflow: hidden;
-    }
+    html, body { height: 100%; margin: 0; background: #000; overflow: hidden; }
     #ui {
-      position: fixed;
-      bottom: 12px;
-      left: 12px;
-      right: 12px;
-      z-index: 10;
-      display: flex;
-      gap: 8px;
-      justify-content: center;
+      position: fixed; bottom: 12px; left: 12px; right: 12px;
+      z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
     }
     .panel {
-      background: rgba(0,0,0,0.6);
-      color: #0f0;
-      padding: 10px;
-      border-radius: 8px;
-      font-family: monospace;
-      font-size: 14px;
+      background: rgba(0,0,0,0.6); color: #0f0; padding: 10px;
+      border-radius: 8px; font-family: monospace; font-size: 14px;
     }
     button {
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: none;
-      background: #1e88e5;
-      color: #fff;
-      cursor: pointer;
+      padding: 8px 14px; border-radius: 6px; border: none;
+      background: #1e88e5; color: #fff; cursor: pointer; font-size: 14px;
     }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
     canvas { width: 100%; height: 100%; display: block; }
   </style>
 
-  <!-- ✅ A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.2/aframe/build/aframe-ar.min.js"></script>
 </head>
 
 <body>
   <div id="ui">
-    <div class="panel" id="status">Initializing...</div>
-    <button id="startWebXR">Start WebXR (Anchor Lock)</button>
+    <div class="panel" id="status">Press "Start Camera" to begin AR</div>
+    <button id="startCamera">🎥 Start Camera</button>
+    <button id="startWebXR" disabled>🪐 Start WebXR (Anchor Lock)</button>
   </div>
 
-  <!-- ✅ Scene Setup -->
-  <a-scene
-    embedded
-    vr-mode-ui="enabled: false"
-    arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: false;">
-    
-    <!-- ✅ Marker (your QR marker .patt file) -->
-    <a-marker id="marker" type="pattern" url="patternqr.patt">
-      <!-- Replace this plane with a 3D model if you like -->
-      <a-plane id="markerModel"
-        src="new.jpg"
-        width="0.25" height="0.25"
-        position="0 0 0"
-        rotation="-90 0 0">
-      </a-plane>
-    </a-marker>
-
-    <a-entity camera id="camera"></a-entity>
-  </a-scene>
+  <!-- Scene will be injected later -->
+  <div id="sceneContainer"></div>
 
   <script>
-  /*
-    HYBRID AR FLOW:
-    1️⃣ AR.js detects marker, provides initial pose (accurate start)
-    2️⃣ User clicks “Start WebXR” → request immersive-ar session
-    3️⃣ Convert marker pose → XRAnchor → world-locked position
-    4️⃣ Once anchored, use XR anchor pose for stable placement
-    5️⃣ Fallback gracefully if anchors/WebXR unavailable
-  */
-
   const statusEl = document.getElementById('status');
-  const startBtn = document.getElementById('startWebXR');
-  const markerEl = document.getElementById('marker');
-  const markerModel = document.getElementById('markerModel');
+  const startCamBtn = document.getElementById('startCamera');
+  const startXRBtn = document.getElementById('startWebXR');
+  const sceneContainer = document.getElementById('sceneContainer');
 
+  let sceneInitialized = false;
   let xrSession = null;
   let xrRefSpace = null;
   let anchor = null;
   let anchorCreated = false;
   let markerVisible = false;
+  let markerModel;
 
-  const THREE = window.THREE;
-
-  statusEl.textContent = 'Ready — waiting for marker detection...';
-
-  // 🟢 Detect marker events
-  markerEl.addEventListener('markerFound', () => {
-    markerVisible = true;
-    statusEl.textContent = 'Marker found! Tap "Start WebXR" to world-lock.';
+  // ✅ Step 1: Ask for camera permission manually
+  startCamBtn.addEventListener('click', async () => {
+    try {
+      statusEl.textContent = 'Requesting camera access...';
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log("✅ Camera permission granted.");
+      startCamBtn.disabled = true;
+      initARScene();
+    } catch (err) {
+      console.error("❌ Camera access denied:", err);
+      statusEl.textContent = 'Camera access denied.';
+    }
   });
 
-  markerEl.addEventListener('markerLost', () => {
-    markerVisible = false;
-    if (!anchorCreated) statusEl.textContent = 'Marker lost — reacquire marker.';
-  });
+  // ✅ Step 2: Initialize AR.js scene only after permission
+  function initARScene() {
+    if (sceneInitialized) return;
+    sceneInitialized = true;
 
-  // 🟢 Start WebXR session
-  startBtn.addEventListener('click', async () => {
-    startBtn.disabled = true;
+    statusEl.textContent = 'Initializing AR scene...';
+
+    sceneContainer.innerHTML = `
+      <a-scene
+        embedded
+        vr-mode-ui="enabled: false"
+        arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: true;">
+        
+        <a-marker id="marker" type="pattern" url="patternqr.patt">
+          <a-plane id="markerModel"
+            src="new.jpg"
+            width="0.25" height="0.25"
+            position="0 0 0"
+            rotation="-90 0 0">
+          </a-plane>
+        </a-marker>
+
+        <a-entity camera id="camera"></a-entity>
+      </a-scene>
+    `;
+
+    const markerEl = document.getElementById('marker');
+    markerModel = document.getElementById('markerModel');
+
+    markerEl.addEventListener('markerFound', () => {
+      markerVisible = true;
+      statusEl.textContent = 'Marker found! Tap "Start WebXR" to world-lock.';
+      startXRBtn.disabled = false;
+    });
+
+    markerEl.addEventListener('markerLost', () => {
+      markerVisible = false;
+      if (!anchorCreated) statusEl.textContent = 'Marker lost — reacquire marker.';
+    });
+
+    statusEl.textContent = 'Camera started — point at your QR marker!';
+  }
+
+  // ✅ Step 3: WebXR session (same as before)
+  startXRBtn.addEventListener('click', async () => {
+    startXRBtn.disabled = true;
     statusEl.textContent = 'Requesting WebXR session...';
 
     if (!navigator.xr) {
@@ -118,8 +117,14 @@
       return;
     }
 
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if (!supported) {
+      statusEl.textContent = 'immersive-ar not supported on this browser/device.';
+      return;
+    }
+
     const sessionInit = {
-      optionalFeatures: ['local-floor', 'bounded-floor', 'anchors', 'hit-test', 'dom-overlay'],
+      optionalFeatures: ['local-floor', 'anchors', 'hit-test', 'dom-overlay'],
       domOverlay: { root: document.body }
     };
 
@@ -131,14 +136,12 @@
       return;
     }
 
-    // Create XR-compatible WebGL context
     const canvas = document.querySelector('canvas');
     const gl = canvas.getContext('webgl', { xrCompatible: true });
     await gl.makeXRCompatible();
 
     const xrGlLayer = new XRWebGLLayer(xrSession, gl);
     xrSession.updateRenderState({ baseLayer: xrGlLayer });
-
     xrRefSpace = await xrSession.requestReferenceSpace('local');
 
     xrSession.addEventListener('end', () => {
@@ -146,14 +149,14 @@
       anchor = null;
       xrSession = null;
       statusEl.textContent = 'WebXR session ended.';
-      startBtn.disabled = false;
+      startXRBtn.disabled = false;
     });
 
     xrSession.requestAnimationFrame(onXRFrame);
-    statusEl.textContent = 'WebXR started — waiting for marker to create anchor.';
+    statusEl.textContent = 'WebXR started — waiting for marker.';
   });
 
-  // 🟢 Convert matrix to position/quaternion
+  // Helper
   function matrixToPosQuat(m) {
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
@@ -162,54 +165,39 @@
     return { pos, quat };
   }
 
-  // 🟢 WebXR render loop
+  // ✅ WebXR frame loop
   async function onXRFrame(t, xrFrame) {
     xrSession.requestAnimationFrame(onXRFrame);
-
     const pose = xrFrame.getViewerPose(xrRefSpace);
     if (!pose) return;
 
-    // Create anchor from marker
     if (markerVisible && !anchorCreated && xrFrame.createAnchor) {
       try {
         markerModel.object3D.updateMatrixWorld(true);
         const { pos, quat } = matrixToPosQuat(markerModel.object3D.matrixWorld);
-
-        const xrPos = { x: pos.x, y: pos.y, z: pos.z };
-        const xrRot = { x: quat.x, y: quat.y, z: quat.z, w: quat.w };
-        const transform = new XRRigidTransform(xrPos, xrRot);
-
+        const transform = new XRRigidTransform(pos, quat);
         anchor = await xrFrame.createAnchor(transform, xrRefSpace);
         anchorCreated = true;
-        statusEl.textContent = '✅ Anchor created! Object is now world-locked.';
+        statusEl.textContent = '✅ Anchor created — world-locked!';
       } catch (e) {
         console.warn('Anchor creation failed:', e);
         statusEl.textContent = '⚠️ Anchors unavailable — using marker fallback.';
       }
     }
 
-    // Update anchored pose if available
     if (anchorCreated && anchor) {
       const anchorPose = xrFrame.getPose(anchor.anchorSpace, xrRefSpace);
       if (anchorPose) {
         const p = anchorPose.transform.position;
         const o = anchorPose.transform.orientation;
         markerModel.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
-
         const q = new THREE.Quaternion(o.x, o.y, o.z, o.w);
         const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
-        const deg = (r) => (r * 180) / Math.PI;
+        const deg = r => (r * 180) / Math.PI;
         markerModel.setAttribute('rotation', `${deg(e.x)} ${deg(e.y)} ${deg(e.z)}`);
-
-        statusEl.textContent = '🧭 Using world-locked anchor pose (stable AR).';
       }
     }
   }
-
-  // 🟢 End session if tab hidden
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && xrSession) xrSession.end();
-  });
   </script>
 </body>
 </html>
