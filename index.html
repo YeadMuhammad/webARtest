@@ -1,199 +1,253 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>WebXR AR Replacement for QR</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      html, body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-        font-family: sans-serif;
-      }
-      #overlay {
-        position: fixed;
-        bottom: 12px;
-        left: 12px;
-        right: 12px;
-        padding: 12px;
-        background: rgba(0,0,0,0.6);
-        color: #fff;
-        border-radius: 8px;
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        z-index: 2;
-      }
-      #overlay button {
-        padding: 10px 14px;
-        border-radius: 6px;
-        border: none;
-        background: #1e88e5;
-        color: white;
-        font-size: 14px;
-        cursor: pointer;
-      }
-      #overlay .status {
-        flex: 1;
-        font-size: 14px;
-      }
-      canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="overlay" aria-live="polite" aria-label="AR status">
-      <span class="status" id="status">Preparing...</span>
-      <button id="startBtn" style="display:none;">Start AR</button>
-    </div>
-    <script type="module">
-      // Minimal WebXR AR with image tracking
-      // - Detects a target image (qr-target.png)
-      // - Places replacement.png on the detected target
-      // - Keeps virtual content anchored to the target as you move
-      // - If not compatible, shows a clear message with reasons
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hybrid Image->WebXR Anchor (Image detect + world lock)</title>
+  <style>
+    html,body { height:100%; margin:0; background:#000; overflow:hidden; }
+    #ui { position:fixed; bottom:12px; left:12px; right:12px; z-index:10; display:flex; gap:8px; }
+    .panel { background:rgba(0,0,0,0.6); color:#fff; padding:10px; border-radius:8px; font-family:sans-serif; }
+    button { padding:8px 12px; border-radius:6px; border:none; background:#1e88e5; color:#fff; cursor:pointer; }
+    #status { min-width:220px }
+    canvas { width:100%; height:100%; display:block }
+  </style>
+  <!-- A-Frame + AR.js (marker detection) -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.2/aframe/build/aframe-ar.min.js"></script>
+</head>
+<body>
+  <div id="ui">
+    <div class="panel" id="status">Initializing...</div>
+    <div class="panel"><button id="startWebXR">Start WebXR session (try anchors)</button></div>
+  </div>
 
-      const statusEl = document.getElementById('status');
-      const startBtn = document.getElementById('startBtn');
-      let xrSession = null;
-      let gl = null;
-      let canvas = null;
-      let xrRefSpace = null;
-      let viewerSpace = null;
-      let imageTrackSource = null;
-      let replacementTexture = null;
-      let quadAsset = null;
-      // simple quad mesh data
-      let glBinding = null; // placeholder for WebXR GL binding if needed
+  <!-- A-Frame scene with AR.js marker detection. Replace pattern URL with your generated .patt file -->
+  <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: false;">
 
-      // Filenames (place in same folder as index.html)
-      const QR_TARGET_FILENAME = 'qr-target.png'; // your QR/poster image
-      const REPLACEMENT_FILENAME = 'old.jpg'; // image to show on target
+    <!-- Use your own marker pattern (generated from your QR/poster) -->
+    <a-marker id="marker" type="pattern" url="pattern-qr.patt">
+      <!-- This entity is used to show immediate feedback and to compute the pose -->
+      <a-entity id="markerModel" position="0 0 0" rotation="0 0 0">
+        <!-- visible placeholder - replace with glTF or image-plane as needed -->
+        <a-box id="placeholder" position="0 0.5 0" depth="0.02" height="0.4" width="0.4" material="color:orange; opacity:0.8"></a-box>
+      </a-entity>
+    </a-marker>
 
-      // Target descriptor
-      // We assume your QR target has a known width in meters (adjust as necessary)
-      const TARGET_WIDTH_METERS = 0.2; // 20 cm wide QR/poster on real world
+    <a-entity camera id="camera"></a-entity>
+  </a-scene>
 
-      // Utility: load an image as an ImageBitmap
-      async function loadImageBitmap(url) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = url;
-        });
-        const bitmap = await createImageBitmap(img);
-        return bitmap;
-      }
+<script>
+/*
+  Hybrid pipeline logic (goal):
+   1) Use AR.js marker/image detection to obtain an accurate initial pose (marker -> camera)
+   2) When user requests, start a WebXR immersive-ar session with optional features (anchors/hit-test)
+   3) On the first frame where we have both a marker pose and an active XRFrame, create an XRAnchor using the marker pose transformed into XR reference space
+   4) After anchor creation, prefer rendering from WebXR anchor pose (world-locked). If WebXR anchors are unavailable, continue to render with marker-driven transform as fallback.
 
-      function showNotCompatible(reason) {
-        statusEl.textContent = 'Not compatible: ' + reason;
-        startBtn.style.display = 'none';
-      }
+  NOTES:
+   - WebXR anchors and createAnchor are experimental on many browsers. This code attempts anchors but falls back gracefully.
+   - You must host this page over HTTPS (or localhost) and place pattern-qr.patt next to the HTML (generated from AR.js marker generator).
+   - For best results on ARCore-capable phones enable experimental WebXR flags in Chrome Canary if your browser lacks anchors.
+*/
 
-      async function init() {
-        if (!('xr' in navigator)) {
-          showNotCompatible('WebXR not supported by this browser.');
-          return;
-        }
+const statusEl = document.getElementById('status');
+const startBtn = document.getElementById('startWebXR');
+const markerEl = document.getElementById('marker');
+const markerModel = document.getElementById('markerModel');
+let xrSession = null;
+let xrRefSpace = null;
+let xrViewerSpace = null;
+let xrGlLayer = null;
+let gl = null;
+let anchor = null; // XRAnchor when created
+let anchorCreated = false;
+let usingAnchorPose = false;
+let fallbackToMarker = true; // start by using marker transform
+let rendererCanvas = null;
+let threeCamera = null;
 
-        const isImgTrackingSupported = await navigator.xr.isSessionSupported('immersive-ar')
-          .catch(() => false);
+statusEl.textContent = 'Ready — waiting for marker detection.';
 
-        if (!isImgTrackingSupported) {
-          showNotCompatible('Immersive AR not supported on this device/browser.');
-          return;
-        }
+// Monitor marker detection using A-Frame events from AR.js
+let markerVisible = false;
+markerEl.addEventListener('markerFound', () => {
+  markerVisible = true;
+  statusEl.textContent = 'Marker found. You can spawn world-anchor via WebXR.';
+});
+markerEl.addEventListener('markerLost', () => {
+  markerVisible = false;
+  if (!anchorCreated) statusEl.textContent = 'Marker lost (no anchor yet). Move camera to re-detect.';
+});
 
-        // Create a canvas and get GL context
-        canvas = document.createElement('canvas');
-        document.body.appendChild(canvas);
-        gl = canvas.getContext('webgl', { xrCompatible: true });
+// When user presses start, attempt to start WebXR immersive-ar session
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  statusEl.textContent = 'Requesting WebXR session...';
 
-        if (!gl) {
-          showNotCompatible('WebGL not available.');
-          return;
-        }
+  if (!navigator.xr) {
+    statusEl.textContent = 'WebXR not available — will use marker-only fallback.';
+    return;
+  }
 
-        // Prepare replacement texture
+  // We request an immersive-ar session but put image-tracking out: we will detect images using AR.js.
+  // Request experimental features as optional; if they are not available, session may still start.
+  const sessionInit = {
+    optionalFeatures: ['local-floor','bounded-floor','anchors','hit-test','dom-overlay'],
+    domOverlay: { root: document.body }
+  };
+
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+  } catch (err) {
+    console.warn('requestSession failed:', err);
+    statusEl.textContent = 'Failed to start WebXR session — using marker-only fallback. (' + (err && err.message ? err.message : err) + ')';
+    return;
+  }
+
+  // create WebGL context compatible with XR
+  // Grab the existing canvas used by A-Frame / AR.js (A-Frame uses a canvas under the hood). We create our own gl for anchors if needed.
+  rendererCanvas = document.querySelector('canvas');
+  gl = rendererCanvas.getContext('webgl', { xrCompatible: true });
+  await gl.makeXRCompatible();
+
+  xrGlLayer = new XRWebGLLayer(xrSession, gl);
+  xrSession.updateRenderState({ baseLayer: xrGlLayer });
+
+  xrRefSpace = await xrSession.requestReferenceSpace('local');
+  xrViewerSpace = await xrSession.requestReferenceSpace('viewer');
+
+  statusEl.textContent = 'WebXR session running. Waiting for marker & XR frame to create world anchor.';
+
+  xrSession.addEventListener('end', () => {
+    statusEl.textContent = 'WebXR session ended.';
+    xrSession = null;
+    anchor = null;
+    anchorCreated = false;
+    usingAnchorPose = false;
+  });
+
+  xrSession.requestAnimationFrame(onXRFrame);
+});
+
+// Utility: convert A-Frame/three.js object3D world matrix to position/quaternion
+function matrixToPosQuat(m) {
+  // m is THREE.Matrix4
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  m.decompose(pos, quat, scale);
+  return { pos, quat };
+}
+
+// We'll need three.js for math; A-Frame includes THREE already
+const THREE = window.THREE;
+
+async function onXRFrame(time, xrFrame) {
+  const session = xrFrame.session;
+  session.requestAnimationFrame(onXRFrame);
+
+  // Try to get a viewer pose to set viewport
+  const pose = xrFrame.getViewerPose(xrRefSpace);
+  if (!pose) return; // no pose -> skip
+
+  // If marker is visible and we haven't created an anchor, attempt to create one
+  if (markerVisible && xrFrame && !anchorCreated) {
+    try {
+      // Get the three.js world matrix of the marker's object3D
+      const markerObj3D = markerModel.object3D; // three.js Object3D
+      // Ensure matrixWorld is up-to-date
+      markerObj3D.updateMatrixWorld(true);
+      const m = markerObj3D.matrixWorld.clone();
+
+      // Convert to position/quaternion in three.js world coordinates
+      const { pos, quat } = matrixToPosQuat(m);
+
+      // Convert three.js right-handed meters coordinates to WebXR XRRigidTransform
+      // A-Frame/three.js uses Y up; WebXR uses Y up too, so we can map x,y,z directly.
+      const xrPos = { x: pos.x, y: pos.y, z: pos.z };
+      const xrOrient = { x: quat.x, y: quat.y, z: quat.z, w: quat.w };
+
+      // Create XRAnchor from the pose
+      // NOTE: createAnchor is done via XRFrame.createAnchor in many implementations
+      if (typeof xrFrame.createAnchor === 'function') {
+        const xrTransform = new XRRigidTransform(xrPos, xrOrient);
         try {
-          replacementTexture = await loadImageBitmap(REPLACEMENT_FILENAME);
-        } catch {
-          // If replacement image fails, warn but continue with a placeholder
-          statusEl.textContent = 'Warning: replacement image failed to load. Using fallback.';
-        }
-
-        // Show Start AR button
-        startBtn.style.display = 'inline-block';
-        startBtn.addEventListener('click', onStart);
-        statusEl.textContent = 'Tap Start AR to begin. Point at your QR target to place the replacement AR content.';
-      }
-
-      async function onStart() {
-        startBtn.style.display = 'none';
-
-        try {
-          xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['image-tracking'] });
-        } catch (err) {
-          showNotCompatible('Failed to start AR session: ' + (err?.message || err));
-          return;
-        }
-
-        // Set up XR WebGL context
-        await gl.makeXRCompatible();
-        const baseLayer = new XRWebGLLayer(xrSession, gl);
-        xrSession.updateRenderState({ baseLayer });
-        xrRefSpace = await xrSession.requestReferenceSpace('local');
-        viewerSpace = await xrSession.requestReferenceSpace('viewer');
-
-        // Load target image as an ImageBitmap and create an XRImageTrackingTarget
-        let targetImageBitmap;
-        try {
-          targetImageBitmap = await loadImageBitmap(QR_TARGET_FILENAME);
+          anchor = await xrFrame.createAnchor(xrTransform, xrRefSpace);
+          anchorCreated = true;
+          statusEl.textContent = 'Anchor created! Object is now world-locked.';
+          usingAnchorPose = true;
         } catch (e) {
-          showNotCompatible('Unable to load target image. Ensure qr-target.png is in the folder.');
-          return;
+          console.warn('createAnchor failed:', e);
+          statusEl.textContent = 'Could not create anchor (experimental). Will continue marker-driven rendering.';
+          anchorCreated = false;
         }
-
-        const imageTrackingInit = {
-          imageTargets: [
-            { image: targetImageBitmap, widthInMeters: TARGET_WIDTH_METERS }
-          ]
-        };
-
+      } else if (session.requestHitTest) {
+        // older style hit-test fallback — try one hit-test at marker position
         try {
-          // @ts-ignore
-          if (xrSession.updateImageTracking) xrSession.updateImageTracking(imageTrackingInit);
+          // perform a transient hit test near marker using viewer
+          const hitTestResults = await xrFrame.requestHitTest();
+          // Not implemented here — too vendor-specific. Fall back to marker.
+          statusEl.textContent = 'Anchors not supported; using marker as fallback.';
         } catch (e) {
-          // Ignore; proceed; rendering loop will rely on available data
+          console.warn('hit-test fallback failed:', e);
+          statusEl.textContent = 'Anchors and hit-test not available. Using marker fallback.';
         }
-
-        const onFrame = (time, frame) => {
-          xrSession.requestAnimationFrame(onFrame);
-          const pose = frame.getViewerPose(xrRefSpace);
-          if (!pose) return;
-
-          const glLayer = xrSession.renderState.baseLayer;
-          gl.viewport(0, 0, glLayer.getViewport(new XRRigidTransform()).width, glLayer.getViewport(new XRRigidTransform()).height);
-
-          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-          // Image tracking data would normally provide the pose of the detected target.
-          // Here we would fetch frame.getImageTrackingResults() and render a textured quad
-          // aligned with the detected target's transform.
-        };
-
-        xrSession.requestAnimationFrame(onFrame);
-        statusEl.textContent = 'AR started. Move the device to detect the QR target.';
+      } else {
+        statusEl.textContent = 'Anchors API not available in this runtime. Using marker-driven fallback.';
       }
+    } catch (err) {
+      console.warn('anchor creation error:', err);
+    }
+  }
 
-      window.addEventListener('load', init);
-    </script>
-  </body>
+  // Now obtain pose to render the virtual object
+  if (anchorCreated && anchor) {
+    // anchor.anchorSpace gives an XRSpace representing anchor's pose
+    try {
+      const anchorPose = xrFrame.getPose(anchor.anchorSpace, xrRefSpace);
+      if (anchorPose) {
+        // anchorPose.transform.position & orientation give world-locked transform
+        // We will copy these into the A-Frame entity so the scene shows the world-locked object
+        const p = anchorPose.transform.position;
+        const o = anchorPose.transform.orientation;
+        // Update A-Frame markerModel with the anchor pose
+        markerModel.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+        markerModel.setAttribute('rotation', `0 0 0`); // rotation from quaternion below
+        // Convert quaternion to Euler angles
+        const q = new THREE.Quaternion(o.x, o.y, o.z, o.w);
+        const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+        const deg = (rad) => (rad * 180) / Math.PI;
+        markerModel.setAttribute('rotation', `${deg(e.x)} ${deg(e.y)} ${deg(e.z)}`);
+
+        usingAnchorPose = true;
+      }
+    } catch (e) {
+      console.warn('reading anchor pose failed:', e);
+    }
+  } else {
+    // No anchor: use marker transform from AR.js (markerModel.object3D)
+    if (markerVisible) {
+      // nothing to do: A-Frame already renders the markerModel using the camera feed.
+      usingAnchorPose = false;
+    }
+  }
+
+  // update status text
+  if (usingAnchorPose) {
+    statusEl.textContent = 'Using world-locked anchor pose (move away from marker to test).';
+  } else if (markerVisible) {
+    statusEl.textContent = 'Using marker-driven pose. Move camera to detect marker.';
+  }
+}
+
+// Safety: if page loses visibility, end XR session
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && xrSession) {
+    xrSession.end();
+  }
+});
+
+</script>
+</body>
 </html>
