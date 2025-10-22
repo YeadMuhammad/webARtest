@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AR Poster Replacement via QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@4.2.0/aframe/build/aframe-ar.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <a-scene embedded vr-mode-ui="enabled: false" 
+           arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+    
+    <!-- Marker for QR code -->
+    <a-marker type="pattern" url="patternqr.patt">
+      <!-- AR Poster aligned to QR (centered) -->
+      <a-plane src="new.jpg" 
+               width="3"    <!-- Adjust to match poster width -->
+               height="4"   <!-- Adjust to match poster height -->
+               position="0 0 0" 
+               rotation="-90 0 0">
+      </a-plane>
+    </a-marker>
+
+    <!-- Camera -->
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
+</html>
