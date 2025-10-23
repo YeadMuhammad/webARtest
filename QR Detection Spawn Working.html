@@ -69,16 +69,45 @@
     overlay.style.height = rect.height+'px';
   }
 
-  function mapVideoPointToDisplay(px,py,vidW,vidH,dispW,dispH){
-    const videoRatio = vidW/vidH;
-    const dispRatio = dispW/dispH;
-    let srcW=vidW, srcH=vidH, srcX=0, srcY=0;
-    if(videoRatio>dispRatio){ srcW=vidH*dispRatio; srcX=(vidW-srcW)/2; }
-    else{ srcH=vidW/dispRatio; srcY=(vidH-srcH)/2; }
-    const nx=(px-srcX)/srcW;
-    const ny=(py-srcY)/srcH;
-    return { x: nx*dispW, y: ny*dispH };
+function mapVideoPointToDisplay(px, py, vidW, vidH, dispW, dispH){
+  const videoRatio = vidW / vidH;
+  const dispRatio = dispW / dispH;
+  let srcW = vidW, srcH = vidH, srcX = 0, srcY = 0;
+
+  if (videoRatio > dispRatio) {
+    srcW = vidH * dispRatio;
+    srcX = (vidW - srcW) / 2;
+  } else {
+    srcH = vidW / dispRatio;
+    srcY = (vidH - srcH) / 2;
   }
+
+  const nx = (px - srcX) / srcW;
+  const ny = (py - srcY) / srcH;
+
+  let dx = nx * dispW;
+  let dy = ny * dispH;
+
+  // Adjust for device orientation
+  const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  switch(angle) {
+    case 90:
+      [dx, dy] = [dispW - dy, dx];
+      break;
+    case -90:
+    case 270:
+      [dx, dy] = [dy, dispH - dx];
+      break;
+    case 180:
+      dx = dispW - dx;
+      dy = dispH - dy;
+      break;
+  }
+
+  return { x: dx, y: dy };
+}
+
+
 
   function drawDetection(cornersDisplay,text){
     ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -101,28 +130,48 @@
     ctx.fillText(text,tx,ty);
   }
 
-  function placeSpawnImage(cornersDisplay,imageUrl){
-    const xs=cornersDisplay.map(p=>p.x), ys=cornersDisplay.map(p=>p.y);
-    const minX=Math.min(...xs), minY=Math.min(...ys);
-    const maxX=Math.max(...xs), maxY=Math.max(...ys);
-    const width=maxX-minX, height=maxY-minY;
-    const dx=cornersDisplay[1].x-cornersDisplay[0].x;
-    const dy=cornersDisplay[1].y-cornersDisplay[0].y;
-    const angleDeg=Math.atan2(dy,dx)*180/Math.PI;
+  function placeSpawnImage(cornersDisplay, imageUrl){
+  const xs = cornersDisplay.map(p => p.x);
+  const ys = cornersDisplay.map(p => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const maxX = Math.max(...xs), maxY = Math.max(...ys);
+  const width = maxX - minX, height = maxY - minY;
 
-    if(spawnImg.src.indexOf(imageUrl)===-1 && !spawnImg.dataset.loading){
-      spawnImg.dataset.loading='1';
-      spawnImg.onload=()=>{ delete spawnImg.dataset.loading; spawnImg.style.display='block'; }
-      spawnImg.onerror=()=>{ delete spawnImg.dataset.loading; statusBox.textContent='Spawn image failed'; }
-      spawnImg.src=imageUrl;
-    } else { spawnImg.style.display='block'; }
+  // Center of QR
+  const centerX = (xs[0] + xs[1] + xs[2] + xs[3]) / 4;
+  const centerY = (ys[0] + ys[1] + ys[2] + ys[3]) / 4;
 
-    spawnImg.style.left=minX+'px';
-    spawnImg.style.top=minY+'px';
-    spawnImg.style.width=width+'px';
-    spawnImg.style.height=height+'px';
-    spawnImg.style.transform=`rotate(${angleDeg}deg)`;
+  // Rotation angle (based on top edge)
+  const dx = cornersDisplay[1].x - cornersDisplay[0].x;
+  const dy = cornersDisplay[1].y - cornersDisplay[0].y;
+  const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+  // Load image if not yet loaded
+  if (spawnImg.src.indexOf(imageUrl) === -1 && !spawnImg.dataset.loading) {
+    spawnImg.dataset.loading = '1';
+    spawnImg.onload = () => { 
+      delete spawnImg.dataset.loading; 
+      spawnImg.style.display = 'block'; 
+    };
+    spawnImg.onerror = () => { 
+      delete spawnImg.dataset.loading; 
+      statusBox.textContent = 'Spawn image failed'; 
+    };
+    spawnImg.src = imageUrl;
+  } else {
+    spawnImg.style.display = 'block';
   }
+
+  // Set size & center positioning
+  spawnImg.style.width = width + 'px';
+  spawnImg.style.height = height + 'px';
+
+  // Move element center to QR center, and rotate around center
+  spawnImg.style.left = (centerX - width / 2) + 'px';
+  spawnImg.style.top = (centerY - height / 2) + 'px';
+  spawnImg.style.transformOrigin = 'center center';
+  spawnImg.style.transform = `rotate(${angleDeg}deg)`;
+}
 
   function clearOverlay(){
     ctx.clearRect(0,0,overlay.width,overlay.height);
