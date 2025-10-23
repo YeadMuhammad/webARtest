@@ -1,56 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Camera Access</title>
-  <script type="module">
-    import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar-js@1.2.5/dist/mindar-image-three.module.js';
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js';
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MindAR A-Frame Example</title>
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const startButton = document.getElementById('startAR');
-      const container = document.getElementById('ar-container');
+<!-- A-Frame -->
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
-      startButton.addEventListener('click', async () => {
-        try {
-          const mindar = new MindARThree({
-            container,
-            imageTargetSrc: 'https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/assets/targets.mind'
-          });
+<!-- MindAR CDN scripts -->
+<script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-          const { renderer, scene, camera } = mindar;
-
-          renderer.setSize(container.clientWidth, container.clientHeight);
-          renderer.setPixelRatio(window.devicePixelRatio);
-
-          const geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-          const material = new THREE.MeshNormalMaterial();
-          const cube = new THREE.Mesh(geometry, material);
-
-          const anchor = mindar.addAnchor(0);
-          anchor.group.add(cube);
-
-          anchor.onTargetFound = () => console.log('Target found');
-          anchor.onTargetLost = () => console.log('Target lost');
-
-          await mindar.start();
-
-          renderer.setAnimationLoop(() => {
-            cube.rotation.y += 0.02;
-            renderer.render(scene, camera);
-          });
-
-          startButton.style.display = 'none';
-        } catch (err) {
-          console.error('Error starting AR:', err);
-        }
-      });
-    });
-  </script>
+<style>
+  body { margin:0; overflow:hidden; }
+  #startAR {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 20px;
+    font-size: 18px;
+    z-index: 10;
+  }
+</style>
 </head>
 <body>
-  <button id="startAR">Start AR</button>
-  <div id="ar-container" style="width: 100vw; height: 100vh;"></div>
+
+<button id="startAR">Start AR</button>
+
+<a-scene 
+  mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/assets/targets.mind"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: false"
+  embedded
+>
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-plane color="red" opacity="0.8" position="0 0 0" height="1" width="1"></a-plane>
+  </a-entity>
+</a-scene>
+
+<script>
+const startButton = document.getElementById("startAR");
+const sceneEl = document.querySelector("a-scene");
+
+startButton.addEventListener("click", async () => {
+  startButton.disabled = true;
+
+  // wait for scene to be fully loaded
+  await new Promise(resolve => sceneEl.addEventListener("loaded", resolve));
+
+  // Access MindAR system
+  const mindarSystem = sceneEl.systems["mindar-image-system"];
+  if (!mindarSystem) {
+    console.error("MindAR system not found!");
+    return;
+  }
+
+  // start camera
+  await mindarSystem.start();
+  console.log("MindAR camera started");
+
+  // Hide button
+  startButton.style.display = "none";
+
+  // Optional: debug events
+  sceneEl.addEventListener("targetFound", () => console.log("Target detected"));
+  sceneEl.addEventListener("targetLost", () => console.log("Target lost"));
+});
+</script>
+
 </body>
 </html>
